@@ -1,7 +1,7 @@
 # HanEn Cursor Indicator
 
-Windows tray app that shows the current Korean/English input mode next to the mouse cursor.
-마우스 커서 바로 옆에 현재 입력 상태를 `한` / `en`으로 표시합니다.
+Windows-only tray app that shows the current Korean/English input mode next to the mouse cursor.
+마우스 커서 바로 옆에 현재 입력 상태를 `한` / `en`으로 표시하는 Windows 전용 앱입니다.
 
 ![HanEn Cursor Indicator demo](assets/demo.gif)
 
@@ -22,14 +22,76 @@ dist/HanEnCursorIndicator.exe
 ```
 
 No installer is required. The app starts immediately and adds a tray icon.
+기본 사용은 exe 파일 하나만 실행하면 됩니다.
+
+## Windows Support
+
+- Windows 10 / Windows 11
+- No separate installer required
+- Built with the .NET Framework compiler included on Windows
+
+## Custom Images / 이미지 추가
+
+The app still works as a single exe by default. If you want custom badges, create an optional `images` folder next to the exe:
+
+```text
+dist/
+  HanEnCursorIndicator.exe
+  images/
+    han.png
+    en.png
+```
+
+Supported file names:
+
+```text
+images/han.gif
+images/han.png
+images/han.jpg
+images/han.jpeg
+images/han.bmp
+
+images/en.gif
+images/en.png
+images/en.jpg
+images/en.jpeg
+images/en.bmp
+```
+
+The app searches in this order: GIF, PNG, JPG, JPEG, BMP.
+
+Tips:
+
+- Use transparent PNG files for clean static badges.
+- Use animated GIF files for moving badges.
+- 32px to 64px square images work best.
+- After changing images while the app is running, use the tray menu item `커스텀 이미지 다시 불러오기`.
+
+## Animation Effects
+
+- Input-mode changes use a subtle pop animation.
+- Custom animated GIF badges keep their GIF animation.
+- If no custom image is found, the app falls back to the default `한` / `en` text badge.
 
 ## Features
 
 - Shows `한` next to the cursor when Korean input mode is active.
 - Shows `en` next to the cursor when English input mode is active.
+- Optional custom PNG/JPG/BMP/GIF badge images.
+- Animated GIF badge support.
 - Can be toggled from the Windows tray menu.
 - Double-click the tray icon to quickly turn the cursor indicator on or off.
 - Exit from the tray menu.
+
+## MVP Direction
+
+This can grow into a small Windows utility MVP with:
+
+- Custom image packs
+- Startup-on-boot option
+- Simple settings UI
+- GitHub Releases download page
+- Signed executable for fewer SmartScreen warnings
 
 ## Build
 
@@ -45,10 +107,6 @@ The build output is `CursorImeIndicator.exe`. The distributable copy is stored a
 dist/HanEnCursorIndicator.exe
 ```
 
-## Notes
-
-Because this is an unsigned personal executable, Windows SmartScreen may show a warning on first run.
-
 ## Demo GIF
 
 The README animation is generated without external packages:
@@ -56,3 +114,7 @@ The README animation is generated without external packages:
 ```bat
 node tools/create-demo-gif.js
 ```
+
+## Notes
+
+Because this is an unsigned personal executable, Windows SmartScreen may show a warning on first run.

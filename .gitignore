@@ -10,4 +10,6 @@ obj/
 /CursorImeIndicator.exe
 dist/*.zip
 dist/*/
+!/dist/images/
+!/dist/images/**
 !/dist/HanEnCursorIndicator.exe

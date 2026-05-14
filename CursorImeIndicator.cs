@@ -1,6 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows.Forms;
@@ -25,8 +28,25 @@ namespace CursorImeIndicator
         }
     }
 
+    internal static class Labels
+    {
+        public const string Korean = "\uD55C";
+        public const string English = "en";
+    }
+
+    internal static class TextResources
+    {
+        public const string ToggleIndicator = "\uCEE4\uC11C \uC606 \uD45C\uC2DC \uCF1C\uAE30";
+        public const string CurrentStatePrefix = "\uD604\uC7AC \uC0C1\uD0DC: ";
+        public const string Checking = "\uD655\uC778 \uC911";
+        public const string ReloadImages = "\uCEE4\uC2A4\uD140 \uC774\uBBF8\uC9C0 \uB2E4\uC2DC \uBD88\uB7EC\uC624\uAE30";
+        public const string Exit = "\uC885\uB8CC";
+        public const string TrayTitle = "\uD55C/En \uB9C8\uC6B0\uC2A4 \uD45C\uC2DC\uAE30";
+    }
+
     internal sealed class IndicatorContext : ApplicationContext
     {
+        private readonly IndicatorAssets assets;
         private readonly IndicatorForm indicatorForm;
         private readonly System.Windows.Forms.Timer timer;
         private readonly NotifyIcon trayIcon;
@@ -38,26 +58,28 @@ namespace CursorImeIndicator
 
         public IndicatorContext()
         {
-            indicatorForm = new IndicatorForm();
+            assets = new IndicatorAssets();
+            indicatorForm = new IndicatorForm(assets);
 
-            enabledItem = new ToolStripMenuItem("커서 옆 표시 켜기");
+            enabledItem = new ToolStripMenuItem(TextResources.ToggleIndicator);
             enabledItem.Checked = true;
             enabledItem.CheckOnClick = true;
             enabledItem.CheckedChanged += OnEnabledChanged;
 
-            stateItem = new ToolStripMenuItem("현재 상태: 확인 중");
+            stateItem = new ToolStripMenuItem(TextResources.CurrentStatePrefix + TextResources.Checking);
             stateItem.Enabled = false;
 
             ContextMenuStrip menu = new ContextMenuStrip();
             menu.Items.Add(enabledItem);
             menu.Items.Add(stateItem);
+            menu.Items.Add(new ToolStripMenuItem(TextResources.ReloadImages, null, OnReloadImages));
             menu.Items.Add(new ToolStripSeparator());
-            menu.Items.Add(new ToolStripMenuItem("종료", null, OnExit));
+            menu.Items.Add(new ToolStripMenuItem(TextResources.Exit, null, OnExit));
 
-            currentTrayIcon = IconFactory.Create("한");
+            currentTrayIcon = IconFactory.Create(Labels.Korean);
             trayIcon = new NotifyIcon();
             trayIcon.Icon = currentTrayIcon;
-            trayIcon.Text = "한/En 마우스 표시기";
+            trayIcon.Text = TextResources.TrayTitle;
             trayIcon.ContextMenuStrip = menu;
             trayIcon.Visible = true;
             trayIcon.MouseDoubleClick += OnTrayDoubleClick;
@@ -71,7 +93,7 @@ namespace CursorImeIndicator
         private void OnTimerTick(object sender, EventArgs e)
         {
             string text = ImeStateReader.GetIndicatorText();
-            stateItem.Text = "현재 상태: " + text;
+            stateItem.Text = TextResources.CurrentStatePrefix + text;
 
             if (text != lastText)
             {
@@ -79,6 +101,8 @@ namespace CursorImeIndicator
                 indicatorForm.SetIndicatorText(text);
                 ReplaceTrayIcon(text);
             }
+
+            indicatorForm.TickAnimations();
 
             if (!enabled)
                 return;
@@ -105,6 +129,12 @@ namespace CursorImeIndicator
             enabled = enabledItem.Checked;
             if (!enabled)
                 indicatorForm.Hide();
+        }
+
+        private void OnReloadImages(object sender, EventArgs e)
+        {
+            assets.Reload();
+            indicatorForm.RefreshAssets();
         }
 
         private void OnTrayDoubleClick(object sender, MouseEventArgs e)
@@ -142,6 +172,8 @@ namespace CursorImeIndicator
                     currentTrayIcon.Dispose();
                 if (indicatorForm != null)
                     indicatorForm.Dispose();
+                if (assets != null)
+                    assets.Dispose();
             }
 
             base.Dispose(disposing);
@@ -150,24 +182,25 @@ namespace CursorImeIndicator
 
     internal sealed class IndicatorForm : Form
     {
-        private const int WidthValue = 34;
-        private const int HeightValue = 24;
+        private static readonly Color TransparentBackColor = Color.FromArgb(255, 1, 2, 3);
+        private readonly IndicatorAssets assets;
         private readonly Font textFont;
-        private string indicatorText = "한";
+        private string indicatorText = Labels.Korean;
+        private DateTime stateChangedAtUtc = DateTime.UtcNow;
 
-        public IndicatorForm()
+        public IndicatorForm(IndicatorAssets assets)
         {
+            this.assets = assets;
             textFont = new Font("Malgun Gothic", 9.5f, FontStyle.Bold, GraphicsUnit.Point);
             FormBorderStyle = FormBorderStyle.None;
             ShowInTaskbar = false;
             StartPosition = FormStartPosition.Manual;
             TopMost = true;
-            Width = WidthValue;
-            Height = HeightValue;
-            Opacity = 0.92d;
-            BackColor = Color.FromArgb(28, 32, 38);
+            Opacity = 0.98d;
+            BackColor = TransparentBackColor;
+            TransparencyKey = TransparentBackColor;
             DoubleBuffered = true;
-            UpdateRegion();
+            ApplyDesiredSize();
         }
 
         protected override bool ShowWithoutActivation
@@ -194,7 +227,26 @@ namespace CursorImeIndicator
                 return;
 
             indicatorText = text;
+            stateChangedAtUtc = DateTime.UtcNow;
+            ApplyDesiredSize();
             Invalidate();
+        }
+
+        public void RefreshAssets()
+        {
+            ApplyDesiredSize();
+            stateChangedAtUtc = DateTime.UtcNow;
+            Invalidate();
+        }
+
+        public void TickAnimations()
+        {
+            IndicatorImage image = assets.Get(indicatorText);
+            if (image != null && image.Animated)
+                image.UpdateFrame();
+
+            if ((DateTime.UtcNow - stateChangedAtUtc).TotalMilliseconds < 260 || (image != null && image.Animated))
+                Invalidate();
         }
 
         public void ShowWithoutStealingFocus()
@@ -230,31 +282,25 @@ namespace CursorImeIndicator
                 NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_SHOWWINDOW);
         }
 
-        protected override void OnSizeChanged(EventArgs e)
-        {
-            base.OnSizeChanged(e);
-            UpdateRegion();
-        }
-
         protected override void OnPaint(PaintEventArgs e)
         {
             base.OnPaint(e);
 
+            e.Graphics.Clear(TransparentBackColor);
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            Rectangle rect = new Rectangle(0, 0, Width - 1, Height - 1);
-            bool korean = indicatorText == "한";
-            Color fill = korean ? Color.FromArgb(24, 128, 91) : Color.FromArgb(38, 78, 140);
+            e.Graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            e.Graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
 
-            using (GraphicsPath path = CreateRoundRectangle(rect, 6))
-            using (SolidBrush brush = new SolidBrush(fill))
-            using (SolidBrush textBrush = new SolidBrush(Color.White))
-            using (StringFormat format = new StringFormat())
+            IndicatorImage image = assets.Get(indicatorText);
+            float scale = GetPopScale();
+
+            if (image != null)
             {
-                e.Graphics.FillPath(brush, path);
-                format.Alignment = StringAlignment.Center;
-                format.LineAlignment = StringAlignment.Center;
-                e.Graphics.DrawString(indicatorText, textFont, textBrush, rect, format);
+                DrawImageIndicator(e.Graphics, image.Image, scale);
+                return;
             }
+
+            DrawTextIndicator(e.Graphics, scale);
         }
 
         protected override void Dispose(bool disposing)
@@ -265,14 +311,100 @@ namespace CursorImeIndicator
             base.Dispose(disposing);
         }
 
-        private void UpdateRegion()
+        private void ApplyDesiredSize()
         {
-            using (GraphicsPath path = CreateRoundRectangle(new Rectangle(0, 0, Width, Height), 6))
+            Size target = GetDesiredSize();
+            if (Width != target.Width || Height != target.Height)
+                Size = target;
+        }
+
+        private Size GetDesiredSize()
+        {
+            IndicatorImage image = assets.Get(indicatorText);
+            if (image == null)
+                return new Size(42, 30);
+
+            Size imageSize = GetImageDrawSize(image.Image);
+            return new Size(imageSize.Width + 12, imageSize.Height + 12);
+        }
+
+        private static Size GetImageDrawSize(Image image)
+        {
+            const int maxSide = 52;
+            const int minSide = 24;
+            int sourceWidth = Math.Max(1, image.Width);
+            int sourceHeight = Math.Max(1, image.Height);
+            float ratio = Math.Min(maxSide / (float)sourceWidth, maxSide / (float)sourceHeight);
+
+            if (ratio > 1.0f && sourceWidth < minSide && sourceHeight < minSide)
+                ratio = Math.Min(minSide / (float)sourceWidth, minSide / (float)sourceHeight);
+            else if (ratio > 1.0f)
+                ratio = 1.0f;
+
+            return new Size(
+                Math.Max(12, (int)Math.Round(sourceWidth * ratio)),
+                Math.Max(12, (int)Math.Round(sourceHeight * ratio)));
+        }
+
+        private float GetPopScale()
+        {
+            double elapsed = (DateTime.UtcNow - stateChangedAtUtc).TotalMilliseconds;
+            if (elapsed <= 0 || elapsed >= 240)
+                return 1.0f;
+
+            double progress = elapsed / 240.0d;
+            return 1.0f + (float)(Math.Sin(progress * Math.PI) * 0.16d);
+        }
+
+        private void DrawImageIndicator(Graphics graphics, Image image, float scale)
+        {
+            Size drawSize = GetImageDrawSize(image);
+            int scaledWidth = Math.Max(1, (int)Math.Round(drawSize.Width * scale));
+            int scaledHeight = Math.Max(1, (int)Math.Round(drawSize.Height * scale));
+            Rectangle rect = new Rectangle(
+                (Width - scaledWidth) / 2,
+                (Height - scaledHeight) / 2,
+                scaledWidth,
+                scaledHeight);
+
+            using (ImageAttributes attributes = new ImageAttributes())
             {
-                Region oldRegion = Region;
-                Region = new Region(path);
-                if (oldRegion != null)
-                    oldRegion.Dispose();
+                graphics.DrawImage(
+                    image,
+                    rect,
+                    0,
+                    0,
+                    image.Width,
+                    image.Height,
+                    GraphicsUnit.Pixel,
+                    attributes);
+            }
+        }
+
+        private void DrawTextIndicator(Graphics graphics, float scale)
+        {
+            int baseWidth = 34;
+            int baseHeight = 24;
+            int scaledWidth = Math.Max(1, (int)Math.Round(baseWidth * scale));
+            int scaledHeight = Math.Max(1, (int)Math.Round(baseHeight * scale));
+            Rectangle rect = new Rectangle(
+                (Width - scaledWidth) / 2,
+                (Height - scaledHeight) / 2,
+                scaledWidth,
+                scaledHeight);
+
+            bool korean = indicatorText == Labels.Korean;
+            Color fill = korean ? Color.FromArgb(24, 128, 91) : Color.FromArgb(38, 78, 140);
+
+            using (GraphicsPath path = CreateRoundRectangle(rect, 6))
+            using (SolidBrush brush = new SolidBrush(fill))
+            using (SolidBrush textBrush = new SolidBrush(Color.White))
+            using (StringFormat format = new StringFormat())
+            {
+                graphics.FillPath(brush, path);
+                format.Alignment = StringAlignment.Center;
+                format.LineAlignment = StringAlignment.Center;
+                graphics.DrawString(indicatorText, textFont, textBrush, rect, format);
             }
         }
 
@@ -291,6 +423,125 @@ namespace CursorImeIndicator
         }
     }
 
+    internal sealed class IndicatorAssets : IDisposable
+    {
+        private static readonly string[] Extensions = new[] { ".gif", ".png", ".jpg", ".jpeg", ".bmp" };
+        private Dictionary<string, IndicatorImage> images = new Dictionary<string, IndicatorImage>();
+
+        public IndicatorAssets()
+        {
+            Reload();
+        }
+
+        public IndicatorImage Get(string label)
+        {
+            IndicatorImage image;
+            if (images.TryGetValue(label, out image))
+                return image;
+
+            return null;
+        }
+
+        public void Reload()
+        {
+            Dictionary<string, IndicatorImage> oldImages = images;
+            Dictionary<string, IndicatorImage> newImages = new Dictionary<string, IndicatorImage>();
+
+            TryLoad(newImages, Labels.Korean, "han");
+            TryLoad(newImages, Labels.English, "en");
+
+            images = newImages;
+
+            foreach (IndicatorImage image in oldImages.Values)
+                image.Dispose();
+        }
+
+        public void Dispose()
+        {
+            foreach (IndicatorImage image in images.Values)
+                image.Dispose();
+
+            images.Clear();
+        }
+
+        private static void TryLoad(Dictionary<string, IndicatorImage> target, string label, string fileNameWithoutExtension)
+        {
+            string imageDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "images");
+            foreach (string extension in Extensions)
+            {
+                string path = Path.Combine(imageDirectory, fileNameWithoutExtension + extension);
+                if (!File.Exists(path))
+                    continue;
+
+                try
+                {
+                    target[label] = IndicatorImage.Load(path);
+                    return;
+                }
+                catch
+                {
+                    return;
+                }
+            }
+        }
+    }
+
+    internal sealed class IndicatorImage : IDisposable
+    {
+        private readonly MemoryStream stream;
+        private readonly EventHandler animationHandler;
+
+        private IndicatorImage(Image image, MemoryStream stream)
+        {
+            Image = image;
+            this.stream = stream;
+            Animated = ImageAnimator.CanAnimate(image);
+
+            if (Animated)
+            {
+                animationHandler = OnFrameChanged;
+                ImageAnimator.Animate(Image, animationHandler);
+            }
+        }
+
+        public Image Image { get; private set; }
+
+        public bool Animated { get; private set; }
+
+        public static IndicatorImage Load(string path)
+        {
+            byte[] bytes = File.ReadAllBytes(path);
+            MemoryStream stream = new MemoryStream(bytes);
+            Image image = Image.FromStream(stream);
+            return new IndicatorImage(image, stream);
+        }
+
+        public void UpdateFrame()
+        {
+            if (Animated)
+                ImageAnimator.UpdateFrames(Image);
+        }
+
+        public void Dispose()
+        {
+            if (Image != null)
+            {
+                if (Animated && animationHandler != null)
+                    ImageAnimator.StopAnimate(Image, animationHandler);
+
+                Image.Dispose();
+                Image = null;
+            }
+
+            if (stream != null)
+                stream.Dispose();
+        }
+
+        private static void OnFrameChanged(object sender, EventArgs e)
+        {
+        }
+    }
+
     internal static class ImeStateReader
     {
         private const int KoreanPrimaryLanguageId = 0x12;
@@ -301,7 +552,7 @@ namespace CursorImeIndicator
 
         public static string GetIndicatorText()
         {
-            return IsKoreanInputMode() ? "한" : "en";
+            return IsKoreanInputMode() ? Labels.Korean : Labels.English;
         }
 
         private static bool IsKoreanInputMode()
@@ -393,8 +644,8 @@ namespace CursorImeIndicator
             Bitmap bitmap = new Bitmap(16, 16);
 
             using (Graphics graphics = Graphics.FromImage(bitmap))
-            using (Font font = new Font("Malgun Gothic", text == "한" ? 8.2f : 6.8f, FontStyle.Bold, GraphicsUnit.Point))
-            using (SolidBrush fill = new SolidBrush(text == "한" ? Color.FromArgb(24, 128, 91) : Color.FromArgb(38, 78, 140)))
+            using (Font font = new Font("Malgun Gothic", text == Labels.Korean ? 8.2f : 6.8f, FontStyle.Bold, GraphicsUnit.Point))
+            using (SolidBrush fill = new SolidBrush(text == Labels.Korean ? Color.FromArgb(24, 128, 91) : Color.FromArgb(38, 78, 140)))
             using (SolidBrush brush = new SolidBrush(Color.White))
             using (StringFormat format = new StringFormat())
             {
