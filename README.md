@@ -113,7 +113,8 @@ Right-click the tray icon and open `미니미 색상`.
 - `기본 색상 선택`: choose the normal mascot clothing color.
 - `상태별 색상 사용`: turn on different clothing colors for Korean and English states.
 - `한글 색상 선택`: clothing color used when the label is `한`.
-- `영어 색상 선택`: clothing color used when the label is `en` or `EN`.
+- `영어 소문자 색상 선택`: clothing color used when the label is `en`.
+- `영어 대문자 색상 선택`: clothing color used when the label is `EN`.
 - The face label stays readable while the body/clothing area is recolored.
 
 ## Animation Effects

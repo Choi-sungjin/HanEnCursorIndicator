@@ -39,4 +39,4 @@ Tips:
 - After changing files while the app is running, choose "커스텀 이미지 다시 불러오기".
 - Use the tray menu "크기" for preset sizes or "드래그로 크기 조정" for mouse slider resizing.
 - Use the tray menu "얼굴 중심 조정" to drag the label point separately for Idle, Point, and Cheer.
-- Use the tray menu "미니미 색상" to choose base, Korean, and English clothing colors.
+- Use the tray menu "미니미 색상" to choose base, Korean, English lowercase, and English uppercase clothing colors.

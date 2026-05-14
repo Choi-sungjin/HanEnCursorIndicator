@@ -58,7 +58,8 @@ namespace CursorImeIndicator
         public const string UseLanguageColors = "\uC0C1\uD0DC\uBCC4 \uC0C9\uC0C1 \uC0AC\uC6A9";
         public const string BaseColor = "\uAE30\uBCF8 \uC0C9\uC0C1 \uC120\uD0DD";
         public const string KoreanColor = "\uD55C\uAE00 \uC0C9\uC0C1 \uC120\uD0DD";
-        public const string EnglishColor = "\uC601\uC5B4 \uC0C9\uC0C1 \uC120\uD0DD";
+        public const string EnglishLowerColor = "\uC601\uC5B4 \uC18C\uBB38\uC790 \uC0C9\uC0C1 \uC120\uD0DD";
+        public const string EnglishUpperColor = "\uC601\uC5B4 \uB300\uBB38\uC790 \uC0C9\uC0C1 \uC120\uD0DD";
         public const string SizeGain = "\uD06C\uAE30 \uAC8C\uC778";
         public const string FaceCenter = "\uC5BC\uAD74 \uC911\uC2EC";
         public const string Reset = "\uAE30\uBCF8\uAC12";
@@ -160,7 +161,8 @@ namespace CursorImeIndicator
             menu.DropDownItems.Add(new ToolStripSeparator());
             menu.DropDownItems.Add(new ToolStripMenuItem(TextResources.BaseColor, null, OnChooseBaseColor));
             menu.DropDownItems.Add(new ToolStripMenuItem(TextResources.KoreanColor, null, OnChooseKoreanColor));
-            menu.DropDownItems.Add(new ToolStripMenuItem(TextResources.EnglishColor, null, OnChooseEnglishColor));
+            menu.DropDownItems.Add(new ToolStripMenuItem(TextResources.EnglishLowerColor, null, OnChooseEnglishLowerColor));
+            menu.DropDownItems.Add(new ToolStripMenuItem(TextResources.EnglishUpperColor, null, OnChooseEnglishUpperColor));
             return menu;
         }
 
@@ -302,9 +304,14 @@ namespace CursorImeIndicator
             ChooseMascotColor(settings.KoreanMascotColor, delegate(Color color) { settings.KoreanMascotColor = color; });
         }
 
-        private void OnChooseEnglishColor(object sender, EventArgs e)
+        private void OnChooseEnglishLowerColor(object sender, EventArgs e)
         {
-            ChooseMascotColor(settings.EnglishMascotColor, delegate(Color color) { settings.EnglishMascotColor = color; });
+            ChooseMascotColor(settings.EnglishLowerMascotColor, delegate(Color color) { settings.EnglishLowerMascotColor = color; });
+        }
+
+        private void OnChooseEnglishUpperColor(object sender, EventArgs e)
+        {
+            ChooseMascotColor(settings.EnglishUpperMascotColor, delegate(Color color) { settings.EnglishUpperMascotColor = color; });
         }
 
         private void ChooseMascotColor(Color initialColor, Action<Color> apply)
@@ -1381,7 +1388,8 @@ namespace CursorImeIndicator
         public bool UseLanguageColors = false;
         public Color BaseMascotColor = Color.FromArgb(238, 224, 198);
         public Color KoreanMascotColor = Color.FromArgb(80, 190, 145);
-        public Color EnglishMascotColor = Color.FromArgb(90, 135, 220);
+        public Color EnglishLowerMascotColor = Color.FromArgb(90, 135, 220);
+        public Color EnglishUpperMascotColor = Color.FromArgb(120, 100, 220);
 
         public static AppSettings Load()
         {
@@ -1433,7 +1441,17 @@ namespace CursorImeIndicator
                     }
                     else if (parts[0].Trim().Equals("englishMascotColor", StringComparison.OrdinalIgnoreCase))
                     {
-                        settings.EnglishMascotColor = ParseColor(parts[1], settings.EnglishMascotColor);
+                        Color legacyColor = ParseColor(parts[1], settings.EnglishLowerMascotColor);
+                        settings.EnglishLowerMascotColor = legacyColor;
+                        settings.EnglishUpperMascotColor = legacyColor;
+                    }
+                    else if (parts[0].Trim().Equals("englishLowerMascotColor", StringComparison.OrdinalIgnoreCase))
+                    {
+                        settings.EnglishLowerMascotColor = ParseColor(parts[1], settings.EnglishLowerMascotColor);
+                    }
+                    else if (parts[0].Trim().Equals("englishUpperMascotColor", StringComparison.OrdinalIgnoreCase))
+                    {
+                        settings.EnglishUpperMascotColor = ParseColor(parts[1], settings.EnglishUpperMascotColor);
                     }
                 }
             }
@@ -1459,7 +1477,8 @@ namespace CursorImeIndicator
                     "useLanguageColors=" + UseLanguageColors,
                     "baseMascotColor=" + FormatColor(BaseMascotColor),
                     "koreanMascotColor=" + FormatColor(KoreanMascotColor),
-                    "englishMascotColor=" + FormatColor(EnglishMascotColor)
+                    "englishLowerMascotColor=" + FormatColor(EnglishLowerMascotColor),
+                    "englishUpperMascotColor=" + FormatColor(EnglishUpperMascotColor)
                 };
                 File.WriteAllLines(path, lines);
             }
@@ -1519,7 +1538,10 @@ namespace CursorImeIndicator
             if (label == Labels.Korean)
                 return KoreanMascotColor;
 
-            return EnglishMascotColor;
+            if (label == Labels.EnglishUpper)
+                return EnglishUpperMascotColor;
+
+            return EnglishLowerMascotColor;
         }
 
         private static float ClampFloat(float value, float min, float max)
