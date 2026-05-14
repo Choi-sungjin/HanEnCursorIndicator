@@ -1,0 +1,13 @@
+bin/
+obj/
+*.user
+*.suo
+*.pdb
+*.ilk
+*.log
+
+# Root build output is duplicated by the distributable file below.
+/CursorImeIndicator.exe
+dist/*.zip
+dist/*/
+!/dist/HanEnCursorIndicator.exe
