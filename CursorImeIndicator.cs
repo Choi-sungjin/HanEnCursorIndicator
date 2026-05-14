@@ -679,7 +679,7 @@ namespace CursorImeIndicator
                 imageRect.Width * 0.38f,
                 imageRect.Height * 0.26f);
 
-            float fontSize = Math.Max(7.0f, imageRect.Height * (text == Labels.Korean ? 0.19f : 0.14f));
+            float fontSize = Math.Max(7.0f, imageRect.Height * (text == Labels.Korean ? 0.155f : 0.14f));
             using (Font font = new Font("Malgun Gothic", fontSize, FontStyle.Bold, GraphicsUnit.Pixel))
             using (SolidBrush fill = new SolidBrush(GetLabelColor(text)))
             using (SolidBrush shadow = new SolidBrush(Color.FromArgb(110, Color.White)))

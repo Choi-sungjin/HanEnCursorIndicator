@@ -258,16 +258,16 @@ function drawCenteredText(canvas, text, cx, cy, color, scale) {
 }
 
 function drawHangulHan(canvas, cx, cy, color, scale) {
-  const x = Math.round(cx - 11 * scale);
-  const y = Math.round(cy - 12 * scale);
-  fillRect(canvas, x + 2 * scale, y + 0 * scale, 9 * scale, 2 * scale, color);
-  fillRect(canvas, x + 6 * scale, y + 0 * scale, 2 * scale, 5 * scale, color);
-  fillRect(canvas, x + 2 * scale, y + 6 * scale, 9 * scale, 2 * scale, color);
-  fillRect(canvas, x + 5 * scale, y + 10 * scale, 5 * scale, 3 * scale, color);
-  fillRect(canvas, x + 15 * scale, y + 0 * scale, 2 * scale, 14 * scale, color);
-  fillRect(canvas, x + 15 * scale, y + 6 * scale, 5 * scale, 2 * scale, color);
-  fillRect(canvas, x + 3 * scale, y + 18 * scale, 16 * scale, 2 * scale, color);
-  fillRect(canvas, x + 3 * scale, y + 14 * scale, 2 * scale, 6 * scale, color);
+  const x = Math.round(cx - 8 * scale);
+  const y = Math.round(cy - 8 * scale);
+  fillRect(canvas, x + 1 * scale, y + 0 * scale, 7 * scale, 1 * scale, color);
+  fillRect(canvas, x + 4 * scale, y + 0 * scale, 1 * scale, 4 * scale, color);
+  fillRect(canvas, x + 1 * scale, y + 5 * scale, 7 * scale, 1 * scale, color);
+  fillRect(canvas, x + 3 * scale, y + 8 * scale, 4 * scale, 2 * scale, color);
+  fillRect(canvas, x + 11 * scale, y + 0 * scale, 1 * scale, 11 * scale, color);
+  fillRect(canvas, x + 11 * scale, y + 5 * scale, 4 * scale, 1 * scale, color);
+  fillRect(canvas, x + 2 * scale, y + 14 * scale, 12 * scale, 1 * scale, color);
+  fillRect(canvas, x + 2 * scale, y + 11 * scale, 1 * scale, 4 * scale, color);
 }
 
 function drawImage(canvas, image, x, y, w, h) {
@@ -299,7 +299,7 @@ function drawMascot(canvas, pose, label, x, y, size) {
   const labelColor = label === "han" ? [24, 128, 91] : label === "EN" ? [30, 64, 175] : [38, 78, 140];
 
   if (label === "han") {
-    drawHangulHan(canvas, faceCx, faceCy + size * 0.005, labelColor, Math.max(1, Math.round(size / 76)));
+    drawHangulHan(canvas, faceCx, faceCy + size * 0.005, labelColor, Math.max(1, Math.round(size / 88)));
   } else {
     const scale = Math.max(2, Math.round(size / 58));
     drawCenteredText(canvas, label, faceCx, faceCy + size * 0.01, labelColor, scale);
