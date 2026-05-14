@@ -1136,7 +1136,6 @@ namespace CursorImeIndicator
             poseCombo.Items.Add(new PoseItem(IndicatorPose.Point, "Point"));
             poseCombo.Items.Add(new PoseItem(IndicatorPose.Cheer, "Cheer"));
             poseCombo.SelectedIndexChanged += OnPoseChanged;
-            poseCombo.SelectedIndex = 0;
 
             coordinateLabel = new Label();
             coordinateLabel.AutoSize = false;
@@ -1167,11 +1166,15 @@ namespace CursorImeIndicator
             Controls.Add(preview);
             Controls.Add(resetButton);
             Controls.Add(closeButton);
+            poseCombo.SelectedIndex = 0;
             RefreshPreview();
         }
 
         public void RefreshPreview()
         {
+            if (preview == null || coordinateLabel == null || poseCombo == null)
+                return;
+
             IndicatorPose pose = GetSelectedPose();
             preview.SetPose(pose);
             PointF center = settings.GetFaceCenter(pose);
