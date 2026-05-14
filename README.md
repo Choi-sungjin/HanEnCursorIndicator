@@ -142,7 +142,7 @@ dist/HanEnCursorIndicator.exe
 
 ## Demo GIF
 
-The README animation is generated without external packages:
+The README animation uses the current minimi mascot pose images from `dist/images/` and is generated without external packages:
 
 ```bat
 node tools/create-demo-gif.js

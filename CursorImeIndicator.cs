@@ -550,7 +550,7 @@ namespace CursorImeIndicator
         {
             RectangleF faceRect = new RectangleF(
                 imageRect.Left + imageRect.Width * 0.31f,
-                imageRect.Top + imageRect.Height * 0.19f,
+                imageRect.Top + imageRect.Height * 0.24f,
                 imageRect.Width * 0.38f,
                 imageRect.Height * 0.26f);
 
