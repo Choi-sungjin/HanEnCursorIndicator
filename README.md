@@ -33,6 +33,7 @@ No installer is required. The app starts immediately and adds a tray icon.
 ## Custom Images / 이미지 추가
 
 The app still works as a single exe by default. If you want custom badges, create an optional `images` folder next to the exe:
+기본은 exe 하나만 실행하면 됩니다. 커스텀 이미지를 쓰고 싶을 때만 exe 옆에 `images` 폴더를 만들면 됩니다.
 
 ```text
 dist/
@@ -59,13 +60,25 @@ images/en.bmp
 ```
 
 The app searches in this order: GIF, PNG, JPG, JPEG, BMP.
+중요: 이미지는 실행 중인 exe 바로 옆 `images` 폴더에서 찾습니다. 이 저장소 기준으로는 `dist/images/`입니다.
 
 Tips:
 
+- Right-click the tray icon and choose `이미지 폴더 열기` to open the correct folder.
+- Put your files there as `han.png` / `en.png` or `han.gif` / `en.gif`.
+- Right-click the tray icon and choose `커스텀 이미지 다시 불러오기`.
+- The app shows a tray notification with the number of loaded custom images.
 - Use transparent PNG files for clean static badges.
 - Use animated GIF files for moving badges.
 - 32px to 64px square images work best.
 - After changing images while the app is running, use the tray menu item `커스텀 이미지 다시 불러오기`.
+
+If nothing changes:
+
+- Check that the app you are running is `dist/HanEnCursorIndicator.exe`.
+- Check that images are inside `dist/images/`.
+- Check the exact file names: `han` for Korean, `en` for English.
+- Windows notifications may hide the reload balloon, but the image is still reloaded.
 
 ## Animation Effects
 

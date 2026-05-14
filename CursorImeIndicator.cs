@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -40,6 +41,7 @@ namespace CursorImeIndicator
         public const string CurrentStatePrefix = "\uD604\uC7AC \uC0C1\uD0DC: ";
         public const string Checking = "\uD655\uC778 \uC911";
         public const string ReloadImages = "\uCEE4\uC2A4\uD140 \uC774\uBBF8\uC9C0 \uB2E4\uC2DC \uBD88\uB7EC\uC624\uAE30";
+        public const string OpenImageFolder = "\uC774\uBBF8\uC9C0 \uD3F4\uB354 \uC5F4\uAE30";
         public const string Exit = "\uC885\uB8CC";
         public const string TrayTitle = "\uD55C/En \uB9C8\uC6B0\uC2A4 \uD45C\uC2DC\uAE30";
     }
@@ -72,6 +74,7 @@ namespace CursorImeIndicator
             ContextMenuStrip menu = new ContextMenuStrip();
             menu.Items.Add(enabledItem);
             menu.Items.Add(stateItem);
+            menu.Items.Add(new ToolStripMenuItem(TextResources.OpenImageFolder, null, OnOpenImageFolder));
             menu.Items.Add(new ToolStripMenuItem(TextResources.ReloadImages, null, OnReloadImages));
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add(new ToolStripMenuItem(TextResources.Exit, null, OnExit));
@@ -135,6 +138,13 @@ namespace CursorImeIndicator
         {
             assets.Reload();
             indicatorForm.RefreshAssets();
+            ShowReloadResult();
+        }
+
+        private void OnOpenImageFolder(object sender, EventArgs e)
+        {
+            Directory.CreateDirectory(assets.ImageDirectory);
+            Process.Start(assets.ImageDirectory);
         }
 
         private void OnTrayDoubleClick(object sender, MouseEventArgs e)
@@ -158,6 +168,15 @@ namespace CursorImeIndicator
             trayIcon.Icon = currentTrayIcon;
             if (oldIcon != null)
                 oldIcon.Dispose();
+        }
+
+        private void ShowReloadResult()
+        {
+            trayIcon.BalloonTipTitle = TextResources.TrayTitle;
+            trayIcon.BalloonTipText = assets.LoadedCount > 0
+                ? "Loaded " + assets.LoadedCount + " custom image(s)."
+                : "No custom images found. Put han.png/en.png or han.gif/en.gif in the images folder.";
+            trayIcon.ShowBalloonTip(2500);
         }
 
         protected override void Dispose(bool disposing)
@@ -433,6 +452,16 @@ namespace CursorImeIndicator
             Reload();
         }
 
+        public string ImageDirectory
+        {
+            get { return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "images"); }
+        }
+
+        public int LoadedCount
+        {
+            get { return images.Count; }
+        }
+
         public IndicatorImage Get(string label)
         {
             IndicatorImage image;
@@ -447,8 +476,8 @@ namespace CursorImeIndicator
             Dictionary<string, IndicatorImage> oldImages = images;
             Dictionary<string, IndicatorImage> newImages = new Dictionary<string, IndicatorImage>();
 
-            TryLoad(newImages, Labels.Korean, "han");
-            TryLoad(newImages, Labels.English, "en");
+            TryLoad(newImages, ImageDirectory, Labels.Korean, "han");
+            TryLoad(newImages, ImageDirectory, Labels.English, "en");
 
             images = newImages;
 
@@ -464,9 +493,8 @@ namespace CursorImeIndicator
             images.Clear();
         }
 
-        private static void TryLoad(Dictionary<string, IndicatorImage> target, string label, string fileNameWithoutExtension)
+        private static void TryLoad(Dictionary<string, IndicatorImage> target, string imageDirectory, string label, string fileNameWithoutExtension)
         {
-            string imageDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "images");
             foreach (string extension in Extensions)
             {
                 string path = Path.Combine(imageDirectory, fileNameWithoutExtension + extension);
