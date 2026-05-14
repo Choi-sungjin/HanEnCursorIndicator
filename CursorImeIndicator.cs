@@ -152,8 +152,8 @@ namespace CursorImeIndicator
 
             Point cursor = Cursor.Position;
             Rectangle area = Screen.FromPoint(cursor).WorkingArea;
-            int x = cursor.X + 16;
-            int y = cursor.Y + 2;
+            int x = cursor.X + 8;
+            int y = cursor.Y - (indicatorForm.Height / 2) + 6;
 
             if (x + indicatorForm.Width > area.Right)
                 x = cursor.X - indicatorForm.Width - 8;
@@ -819,20 +819,20 @@ namespace CursorImeIndicator
             ShowInTaskbar = false;
             TopMost = true;
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(310, 118);
+            ClientSize = new Size(380, 132);
 
             valueLabel = new Label();
             valueLabel.AutoSize = false;
             valueLabel.TextAlign = ContentAlignment.MiddleLeft;
             valueLabel.Location = new Point(12, 10);
-            valueLabel.Size = new Size(180, 22);
+            valueLabel.Size = new Size(250, 24);
 
             numeric = new NumericUpDown();
             numeric.Minimum = AppSettings.MinSizePercent;
             numeric.Maximum = AppSettings.MaxSizePercent;
             numeric.Increment = 5;
-            numeric.Location = new Point(210, 10);
-            numeric.Size = new Size(78, 22);
+            numeric.Location = new Point(282, 10);
+            numeric.Size = new Size(78, 24);
             numeric.ValueChanged += OnNumericChanged;
 
             trackBar = new TrackBar();
@@ -842,12 +842,12 @@ namespace CursorImeIndicator
             trackBar.SmallChange = 5;
             trackBar.LargeChange = 25;
             trackBar.Location = new Point(10, 42);
-            trackBar.Size = new Size(286, 44);
+            trackBar.Size = new Size(358, 45);
             trackBar.Scroll += OnTrackBarChanged;
 
             Button closeButton = new Button();
             closeButton.Text = TextResources.Close;
-            closeButton.Location = new Point(218, 86);
+            closeButton.Location = new Point(298, 96);
             closeButton.Size = new Size(70, 24);
             closeButton.Click += OnCloseClicked;
 
