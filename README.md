@@ -96,6 +96,26 @@ Right-click the tray icon and open `크기`.
 - Drag the slider with the mouse to tune the size gain by percentage.
 - The selected percentage is saved and reused next time.
 
+## Face Center Control / 얼굴 중심 조정
+
+Right-click the tray icon and choose `얼굴 중심 조정`.
+
+- Choose a pose: `Idle`, `Point`, or `Cheer`.
+- Drag the blue point on the preview to the center of the mascot face.
+- The app saves the face center separately for each pose.
+- The `한`, `en`, and `EN` labels use that saved center immediately.
+- Use `기본값` to reset the selected pose.
+
+## Mascot Color / 미니미 색상
+
+Right-click the tray icon and open `미니미 색상`.
+
+- `기본 색상 선택`: choose the normal mascot clothing color.
+- `상태별 색상 사용`: turn on different clothing colors for Korean and English states.
+- `한글 색상 선택`: clothing color used when the label is `한`.
+- `영어 색상 선택`: clothing color used when the label is `en` or `EN`.
+- The face label stays readable while the body/clothing area is recolored.
+
 ## Animation Effects
 
 - Input-mode changes use a subtle pop animation.
@@ -115,6 +135,8 @@ Right-click the tray icon and open `크기`.
 - Tray menu on/off toggle.
 - Tray menu image reload.
 - Tray menu size presets and drag slider.
+- Tray menu face-center drag editor.
+- Tray menu mascot color picker.
 
 ## MVP Direction
 
