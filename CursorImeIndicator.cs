@@ -548,8 +548,9 @@ namespace CursorImeIndicator
 
         private void DrawFaceLabel(Graphics graphics, Rectangle imageRect, string text, float popScale)
         {
+            float faceCenterXRatio = GetFaceCenterXRatio();
             RectangleF faceRect = new RectangleF(
-                imageRect.Left + imageRect.Width * 0.31f,
+                imageRect.Left + imageRect.Width * (faceCenterXRatio - 0.19f),
                 imageRect.Top + imageRect.Height * 0.24f,
                 imageRect.Width * 0.38f,
                 imageRect.Height * 0.26f);
@@ -566,6 +567,15 @@ namespace CursorImeIndicator
                 graphics.DrawString(text, font, shadow, shadowRect, format);
                 graphics.DrawString(text, font, fill, faceRect, format);
             }
+        }
+
+        private float GetFaceCenterXRatio()
+        {
+            if (currentPose == IndicatorPose.Point)
+                return 0.543f;
+            if (currentPose == IndicatorPose.Cheer)
+                return 0.505f;
+            return 0.5f;
         }
 
         private static Color GetLabelColor(string text)

@@ -293,7 +293,8 @@ function drawImage(canvas, image, x, y, w, h) {
 
 function drawMascot(canvas, pose, label, x, y, size) {
   drawImage(canvas, poses[pose], x, y, size, size);
-  const faceCx = x + size * 0.5;
+  const faceCxRatio = pose === "point" ? 0.543 : pose === "cheer" ? 0.505 : 0.5;
+  const faceCx = x + size * faceCxRatio;
   const faceCy = y + size * 0.37;
   const labelColor = label === "han" ? [24, 128, 91] : label === "EN" ? [30, 64, 175] : [38, 78, 140];
 
