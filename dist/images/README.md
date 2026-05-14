@@ -1,37 +1,40 @@
 # Custom Indicator Images
 
-Put optional custom images in this folder when you want to replace the default text badges.
-This folder must be next to the executable you are running.
+This folder sits next to the executable and contains the optional mascot pose images.
 
-For the repository build, the expected location is:
-
-```text
-dist/images/
-```
-
-Supported names:
+The app uses exactly three pose files:
 
 ```text
-han.gif
-han.png
-han.jpg
-han.jpeg
-han.bmp
-
-en.gif
-en.png
-en.jpg
-en.jpeg
-en.bmp
+idle.png
+point.png
+cheer.png
 ```
 
-The app looks for files in this order: GIF, PNG, JPG, JPEG, BMP.
+Behavior:
+
+- `idle.png`: normal standing pose.
+- `point.png`: shown for 1 second after the input mode changes.
+- `cheer.png`: shown periodically.
+
+The app draws the current input label on the face automatically:
+
+- Korean mode: `한`
+- English lowercase mode: `en`
+- English uppercase mode: `EN`
+
+Supported formats:
+
+```text
+idle.gif / idle.png / idle.jpg / idle.jpeg / idle.bmp
+point.gif / point.png / point.jpg / point.jpeg / point.bmp
+cheer.gif / cheer.png / cheer.jpg / cheer.jpeg / cheer.bmp
+```
 
 Tips:
 
-- Use transparent PNG files for clean static badges.
-- Use animated GIF files for moving badges.
-- 32px to 64px square images work best.
+- Transparent PNG files work best.
+- Animated GIF files are supported.
+- Leave a blank face area for the app to draw the input label.
 - Right-click the tray icon and choose "이미지 폴더 열기" to open this folder.
-- After changing files while the app is running, use the tray menu item "커스텀 이미지 다시 불러오기".
-- The app shows a tray notification when reload finishes.
+- After changing files while the app is running, choose "커스텀 이미지 다시 불러오기".
+- Use the tray menu "크기" for preset sizes or "드래그로 크기 조정" for mouse slider resizing.

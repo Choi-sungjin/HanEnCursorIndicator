@@ -1,6 +1,6 @@
 using System;
-using System.Diagnostics;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
@@ -32,7 +32,15 @@ namespace CursorImeIndicator
     internal static class Labels
     {
         public const string Korean = "\uD55C";
-        public const string English = "en";
+        public const string EnglishLower = "en";
+        public const string EnglishUpper = "EN";
+    }
+
+    internal enum IndicatorPose
+    {
+        Idle,
+        Point,
+        Cheer
     }
 
     internal static class TextResources
@@ -40,28 +48,37 @@ namespace CursorImeIndicator
         public const string ToggleIndicator = "\uCEE4\uC11C \uC606 \uD45C\uC2DC \uCF1C\uAE30";
         public const string CurrentStatePrefix = "\uD604\uC7AC \uC0C1\uD0DC: ";
         public const string Checking = "\uD655\uC778 \uC911";
-        public const string ReloadImages = "\uCEE4\uC2A4\uD140 \uC774\uBBF8\uC9C0 \uB2E4\uC2DC \uBD88\uB7EC\uC624\uAE30";
         public const string OpenImageFolder = "\uC774\uBBF8\uC9C0 \uD3F4\uB354 \uC5F4\uAE30";
+        public const string ReloadImages = "\uCEE4\uC2A4\uD140 \uC774\uBBF8\uC9C0 \uB2E4\uC2DC \uBD88\uB7EC\uC624\uAE30";
+        public const string SizeMenu = "\uD06C\uAE30";
+        public const string DragSizeSettings = "\uB4DC\uB798\uADF8\uB85C \uD06C\uAE30 \uC870\uC815";
+        public const string SizeGain = "\uD06C\uAE30 \uAC8C\uC778";
+        public const string Close = "\uB2EB\uAE30";
         public const string Exit = "\uC885\uB8CC";
         public const string TrayTitle = "\uD55C/En \uB9C8\uC6B0\uC2A4 \uD45C\uC2DC\uAE30";
     }
 
     internal sealed class IndicatorContext : ApplicationContext
     {
+        private readonly AppSettings settings;
         private readonly IndicatorAssets assets;
         private readonly IndicatorForm indicatorForm;
         private readonly System.Windows.Forms.Timer timer;
         private readonly NotifyIcon trayIcon;
         private readonly ToolStripMenuItem enabledItem;
         private readonly ToolStripMenuItem stateItem;
+        private readonly ToolStripMenuItem sizeMenu;
+        private readonly List<ToolStripMenuItem> sizePresetItems = new List<ToolStripMenuItem>();
         private Icon currentTrayIcon;
+        private SizeSettingsForm sizeSettingsForm;
         private bool enabled = true;
         private string lastText = "";
 
         public IndicatorContext()
         {
+            settings = AppSettings.Load();
             assets = new IndicatorAssets();
-            indicatorForm = new IndicatorForm(assets);
+            indicatorForm = new IndicatorForm(assets, settings.SizePercent);
 
             enabledItem = new ToolStripMenuItem(TextResources.ToggleIndicator);
             enabledItem.Checked = true;
@@ -71,11 +88,15 @@ namespace CursorImeIndicator
             stateItem = new ToolStripMenuItem(TextResources.CurrentStatePrefix + TextResources.Checking);
             stateItem.Enabled = false;
 
+            sizeMenu = CreateSizeMenu();
+            UpdateSizeMenuChecks();
+
             ContextMenuStrip menu = new ContextMenuStrip();
             menu.Items.Add(enabledItem);
             menu.Items.Add(stateItem);
             menu.Items.Add(new ToolStripMenuItem(TextResources.OpenImageFolder, null, OnOpenImageFolder));
             menu.Items.Add(new ToolStripMenuItem(TextResources.ReloadImages, null, OnReloadImages));
+            menu.Items.Add(sizeMenu);
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add(new ToolStripMenuItem(TextResources.Exit, null, OnExit));
 
@@ -91,6 +112,25 @@ namespace CursorImeIndicator
             timer.Interval = 30;
             timer.Tick += OnTimerTick;
             timer.Start();
+        }
+
+        private ToolStripMenuItem CreateSizeMenu()
+        {
+            ToolStripMenuItem menu = new ToolStripMenuItem(TextResources.SizeMenu);
+            int[] presets = new[] { 50, 75, 100, 125, 150, 200, 250 };
+
+            foreach (int preset in presets)
+            {
+                ToolStripMenuItem item = new ToolStripMenuItem(preset + "%");
+                item.Tag = preset;
+                item.Click += OnSizePresetClick;
+                sizePresetItems.Add(item);
+                menu.DropDownItems.Add(item);
+            }
+
+            menu.DropDownItems.Add(new ToolStripSeparator());
+            menu.DropDownItems.Add(new ToolStripMenuItem(TextResources.DragSizeSettings, null, OnOpenSizeSettings));
+            return menu;
         }
 
         private void OnTimerTick(object sender, EventArgs e)
@@ -147,6 +187,53 @@ namespace CursorImeIndicator
             Process.Start(assets.ImageDirectory);
         }
 
+        private void OnSizePresetClick(object sender, EventArgs e)
+        {
+            ToolStripMenuItem item = sender as ToolStripMenuItem;
+            if (item == null || item.Tag == null)
+                return;
+
+            SetSizePercent((int)item.Tag);
+        }
+
+        private void OnOpenSizeSettings(object sender, EventArgs e)
+        {
+            if (sizeSettingsForm == null || sizeSettingsForm.IsDisposed)
+            {
+                sizeSettingsForm = new SizeSettingsForm(settings.SizePercent, SetSizePercent);
+                sizeSettingsForm.FormClosed += OnSizeSettingsClosed;
+            }
+
+            sizeSettingsForm.SetValue(settings.SizePercent);
+            sizeSettingsForm.Show();
+            sizeSettingsForm.Activate();
+        }
+
+        private void OnSizeSettingsClosed(object sender, FormClosedEventArgs e)
+        {
+            sizeSettingsForm = null;
+        }
+
+        private void SetSizePercent(int percent)
+        {
+            settings.SizePercent = AppSettings.ClampSizePercent(percent);
+            settings.Save();
+            indicatorForm.SetSizePercent(settings.SizePercent);
+
+            if (sizeSettingsForm != null && !sizeSettingsForm.IsDisposed)
+                sizeSettingsForm.SetValue(settings.SizePercent);
+
+            UpdateSizeMenuChecks();
+        }
+
+        private void UpdateSizeMenuChecks()
+        {
+            foreach (ToolStripMenuItem item in sizePresetItems)
+                item.Checked = item.Tag != null && (int)item.Tag == settings.SizePercent;
+
+            sizeMenu.Text = TextResources.SizeMenu + " (" + settings.SizePercent + "%)";
+        }
+
         private void OnTrayDoubleClick(object sender, MouseEventArgs e)
         {
             if (e.Button == MouseButtons.Left)
@@ -175,7 +262,7 @@ namespace CursorImeIndicator
             trayIcon.BalloonTipTitle = TextResources.TrayTitle;
             trayIcon.BalloonTipText = assets.LoadedCount > 0
                 ? "Loaded " + assets.LoadedCount + " custom image(s)."
-                : "No custom images found. Put han.png/en.png or han.gif/en.gif in the images folder.";
+                : "No custom images found. Put idle.png, point.png, and cheer.png in the images folder.";
             trayIcon.ShowBalloonTip(2500);
         }
 
@@ -193,6 +280,8 @@ namespace CursorImeIndicator
                     indicatorForm.Dispose();
                 if (assets != null)
                     assets.Dispose();
+                if (sizeSettingsForm != null)
+                    sizeSettingsForm.Dispose();
             }
 
             base.Dispose(disposing);
@@ -201,15 +290,23 @@ namespace CursorImeIndicator
 
     internal sealed class IndicatorForm : Form
     {
+        private const int PointMilliseconds = 1000;
+        private const int CheerCycleMilliseconds = 9000;
+        private const int CheerDurationMilliseconds = 1200;
         private static readonly Color TransparentBackColor = Color.FromArgb(255, 1, 2, 3);
+
         private readonly IndicatorAssets assets;
         private readonly Font textFont;
         private string indicatorText = Labels.Korean;
+        private int sizePercent;
+        private IndicatorPose currentPose = IndicatorPose.Idle;
+        private DateTime startedAtUtc = DateTime.UtcNow;
         private DateTime stateChangedAtUtc = DateTime.UtcNow;
 
-        public IndicatorForm(IndicatorAssets assets)
+        public IndicatorForm(IndicatorAssets assets, int sizePercent)
         {
             this.assets = assets;
+            this.sizePercent = AppSettings.ClampSizePercent(sizePercent);
             textFont = new Font("Malgun Gothic", 9.5f, FontStyle.Bold, GraphicsUnit.Point);
             FormBorderStyle = FormBorderStyle.None;
             ShowInTaskbar = false;
@@ -247,6 +344,14 @@ namespace CursorImeIndicator
 
             indicatorText = text;
             stateChangedAtUtc = DateTime.UtcNow;
+            currentPose = IndicatorPose.Point;
+            ApplyDesiredSize();
+            Invalidate();
+        }
+
+        public void SetSizePercent(int percent)
+        {
+            sizePercent = AppSettings.ClampSizePercent(percent);
             ApplyDesiredSize();
             Invalidate();
         }
@@ -255,12 +360,21 @@ namespace CursorImeIndicator
         {
             ApplyDesiredSize();
             stateChangedAtUtc = DateTime.UtcNow;
+            currentPose = IndicatorPose.Point;
             Invalidate();
         }
 
         public void TickAnimations()
         {
-            IndicatorImage image = assets.Get(indicatorText);
+            IndicatorPose nextPose = CalculatePose();
+            if (nextPose != currentPose)
+            {
+                currentPose = nextPose;
+                ApplyDesiredSize();
+                Invalidate();
+            }
+
+            IndicatorImage image = GetCurrentImage();
             if (image != null && image.Animated)
                 image.UpdateFrame();
 
@@ -310,12 +424,14 @@ namespace CursorImeIndicator
             e.Graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
             e.Graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
 
-            IndicatorImage image = assets.Get(indicatorText);
+            IndicatorImage image = GetCurrentImage();
             float scale = GetPopScale();
 
             if (image != null)
             {
-                DrawImageIndicator(e.Graphics, image.Image, scale);
+                Rectangle imageRect = DrawImageIndicator(e.Graphics, image.Image, scale);
+                if (assets.HasPoseImages)
+                    DrawFaceLabel(e.Graphics, imageRect, indicatorText, scale);
                 return;
             }
 
@@ -330,6 +446,29 @@ namespace CursorImeIndicator
             base.Dispose(disposing);
         }
 
+        private IndicatorPose CalculatePose()
+        {
+            double sinceChange = (DateTime.UtcNow - stateChangedAtUtc).TotalMilliseconds;
+            if (sinceChange < PointMilliseconds && assets.GetPose(IndicatorPose.Point) != null)
+                return IndicatorPose.Point;
+
+            double sinceStart = (DateTime.UtcNow - startedAtUtc).TotalMilliseconds;
+            double cycle = sinceStart % CheerCycleMilliseconds;
+            if (sinceStart > 3000 && cycle < CheerDurationMilliseconds && assets.GetPose(IndicatorPose.Cheer) != null)
+                return IndicatorPose.Cheer;
+
+            return IndicatorPose.Idle;
+        }
+
+        private IndicatorImage GetCurrentImage()
+        {
+            IndicatorImage poseImage = assets.GetPose(currentPose);
+            if (poseImage != null)
+                return poseImage;
+
+            return assets.GetLegacy(indicatorText);
+        }
+
         private void ApplyDesiredSize()
         {
             Size target = GetDesiredSize();
@@ -339,18 +478,23 @@ namespace CursorImeIndicator
 
         private Size GetDesiredSize()
         {
-            IndicatorImage image = assets.Get(indicatorText);
+            IndicatorImage image = GetCurrentImage();
             if (image == null)
-                return new Size(42, 30);
+            {
+                float ratio = sizePercent / 100.0f;
+                return new Size(
+                    Math.Max(18, (int)Math.Round(42 * ratio)),
+                    Math.Max(14, (int)Math.Round(30 * ratio)));
+            }
 
             Size imageSize = GetImageDrawSize(image.Image);
-            return new Size(imageSize.Width + 12, imageSize.Height + 12);
+            return new Size(imageSize.Width + 16, imageSize.Height + 16);
         }
 
-        private static Size GetImageDrawSize(Image image)
+        private Size GetImageDrawSize(Image image)
         {
-            const int maxSide = 52;
-            const int minSide = 24;
+            int maxSide = Math.Max(24, (int)Math.Round(64 * (sizePercent / 100.0f)));
+            int minSide = Math.Max(16, (int)Math.Round(24 * (sizePercent / 100.0f)));
             int sourceWidth = Math.Max(1, image.Width);
             int sourceHeight = Math.Max(1, image.Height);
             float ratio = Math.Min(maxSide / (float)sourceWidth, maxSide / (float)sourceHeight);
@@ -375,11 +519,11 @@ namespace CursorImeIndicator
             return 1.0f + (float)(Math.Sin(progress * Math.PI) * 0.16d);
         }
 
-        private void DrawImageIndicator(Graphics graphics, Image image, float scale)
+        private Rectangle DrawImageIndicator(Graphics graphics, Image image, float popScale)
         {
             Size drawSize = GetImageDrawSize(image);
-            int scaledWidth = Math.Max(1, (int)Math.Round(drawSize.Width * scale));
-            int scaledHeight = Math.Max(1, (int)Math.Round(drawSize.Height * scale));
+            int scaledWidth = Math.Max(1, (int)Math.Round(drawSize.Width * popScale));
+            int scaledHeight = Math.Max(1, (int)Math.Round(drawSize.Height * popScale));
             Rectangle rect = new Rectangle(
                 (Width - scaledWidth) / 2,
                 (Height - scaledHeight) / 2,
@@ -398,14 +542,48 @@ namespace CursorImeIndicator
                     GraphicsUnit.Pixel,
                     attributes);
             }
+
+            return rect;
         }
 
-        private void DrawTextIndicator(Graphics graphics, float scale)
+        private void DrawFaceLabel(Graphics graphics, Rectangle imageRect, string text, float popScale)
         {
-            int baseWidth = 34;
-            int baseHeight = 24;
-            int scaledWidth = Math.Max(1, (int)Math.Round(baseWidth * scale));
-            int scaledHeight = Math.Max(1, (int)Math.Round(baseHeight * scale));
+            RectangleF faceRect = new RectangleF(
+                imageRect.Left + imageRect.Width * 0.31f,
+                imageRect.Top + imageRect.Height * 0.19f,
+                imageRect.Width * 0.38f,
+                imageRect.Height * 0.26f);
+
+            float fontSize = Math.Max(7.0f, imageRect.Height * (text == Labels.Korean ? 0.19f : 0.14f));
+            using (Font font = new Font("Malgun Gothic", fontSize, FontStyle.Bold, GraphicsUnit.Pixel))
+            using (SolidBrush fill = new SolidBrush(GetLabelColor(text)))
+            using (SolidBrush shadow = new SolidBrush(Color.FromArgb(110, Color.White)))
+            using (StringFormat format = new StringFormat())
+            {
+                format.Alignment = StringAlignment.Center;
+                format.LineAlignment = StringAlignment.Center;
+                RectangleF shadowRect = new RectangleF(faceRect.X + 1, faceRect.Y + 1, faceRect.Width, faceRect.Height);
+                graphics.DrawString(text, font, shadow, shadowRect, format);
+                graphics.DrawString(text, font, fill, faceRect, format);
+            }
+        }
+
+        private static Color GetLabelColor(string text)
+        {
+            if (text == Labels.Korean)
+                return Color.FromArgb(24, 128, 91);
+            if (text == Labels.EnglishUpper)
+                return Color.FromArgb(21, 70, 160);
+            return Color.FromArgb(38, 78, 140);
+        }
+
+        private void DrawTextIndicator(Graphics graphics, float popScale)
+        {
+            float sizeRatio = sizePercent / 100.0f;
+            int baseWidth = (int)Math.Round(34 * sizeRatio);
+            int baseHeight = (int)Math.Round(24 * sizeRatio);
+            int scaledWidth = Math.Max(1, (int)Math.Round(baseWidth * popScale));
+            int scaledHeight = Math.Max(1, (int)Math.Round(baseHeight * popScale));
             Rectangle rect = new Rectangle(
                 (Width - scaledWidth) / 2,
                 (Height - scaledHeight) / 2,
@@ -415,15 +593,16 @@ namespace CursorImeIndicator
             bool korean = indicatorText == Labels.Korean;
             Color fill = korean ? Color.FromArgb(24, 128, 91) : Color.FromArgb(38, 78, 140);
 
-            using (GraphicsPath path = CreateRoundRectangle(rect, 6))
+            using (GraphicsPath path = CreateRoundRectangle(rect, Math.Max(4, (int)Math.Round(6 * sizeRatio))))
             using (SolidBrush brush = new SolidBrush(fill))
             using (SolidBrush textBrush = new SolidBrush(Color.White))
+            using (Font font = new Font("Malgun Gothic", Math.Max(7.0f, 9.5f * sizeRatio), FontStyle.Bold, GraphicsUnit.Point))
             using (StringFormat format = new StringFormat())
             {
                 graphics.FillPath(brush, path);
                 format.Alignment = StringAlignment.Center;
                 format.LineAlignment = StringAlignment.Center;
-                graphics.DrawString(indicatorText, textFont, textBrush, rect, format);
+                graphics.DrawString(indicatorText, font, textBrush, rect, format);
             }
         }
 
@@ -445,10 +624,15 @@ namespace CursorImeIndicator
     internal sealed class IndicatorAssets : IDisposable
     {
         private static readonly string[] Extensions = new[] { ".gif", ".png", ".jpg", ".jpeg", ".bmp" };
-        private Dictionary<string, IndicatorImage> images = new Dictionary<string, IndicatorImage>();
+        private readonly Dictionary<IndicatorPose, string> poseNames = new Dictionary<IndicatorPose, string>();
+        private Dictionary<IndicatorPose, IndicatorImage> poseImages = new Dictionary<IndicatorPose, IndicatorImage>();
+        private Dictionary<string, IndicatorImage> legacyImages = new Dictionary<string, IndicatorImage>();
 
         public IndicatorAssets()
         {
+            poseNames[IndicatorPose.Idle] = "idle";
+            poseNames[IndicatorPose.Point] = "point";
+            poseNames[IndicatorPose.Cheer] = "cheer";
             Reload();
         }
 
@@ -459,13 +643,33 @@ namespace CursorImeIndicator
 
         public int LoadedCount
         {
-            get { return images.Count; }
+            get { return poseImages.Count + legacyImages.Count; }
         }
 
-        public IndicatorImage Get(string label)
+        public bool HasPoseImages
+        {
+            get { return poseImages.Count > 0; }
+        }
+
+        public IndicatorImage GetPose(IndicatorPose pose)
         {
             IndicatorImage image;
-            if (images.TryGetValue(label, out image))
+            if (poseImages.TryGetValue(pose, out image))
+                return image;
+
+            if (poseImages.TryGetValue(IndicatorPose.Idle, out image))
+                return image;
+
+            return null;
+        }
+
+        public IndicatorImage GetLegacy(string label)
+        {
+            IndicatorImage image;
+            if (legacyImages.TryGetValue(label, out image))
+                return image;
+
+            if (label == Labels.EnglishUpper && legacyImages.TryGetValue(Labels.EnglishLower, out image))
                 return image;
 
             return null;
@@ -473,27 +677,53 @@ namespace CursorImeIndicator
 
         public void Reload()
         {
-            Dictionary<string, IndicatorImage> oldImages = images;
-            Dictionary<string, IndicatorImage> newImages = new Dictionary<string, IndicatorImage>();
+            Dictionary<IndicatorPose, IndicatorImage> oldPoseImages = poseImages;
+            Dictionary<string, IndicatorImage> oldLegacyImages = legacyImages;
+            Dictionary<IndicatorPose, IndicatorImage> newPoseImages = new Dictionary<IndicatorPose, IndicatorImage>();
+            Dictionary<string, IndicatorImage> newLegacyImages = new Dictionary<string, IndicatorImage>();
 
-            TryLoad(newImages, ImageDirectory, Labels.Korean, "han");
-            TryLoad(newImages, ImageDirectory, Labels.English, "en");
+            foreach (KeyValuePair<IndicatorPose, string> pair in poseNames)
+                TryLoadPose(newPoseImages, ImageDirectory, pair.Key, pair.Value);
 
-            images = newImages;
+            TryLoadLegacy(newLegacyImages, ImageDirectory, Labels.Korean, "han");
+            TryLoadLegacy(newLegacyImages, ImageDirectory, Labels.EnglishLower, "en");
 
-            foreach (IndicatorImage image in oldImages.Values)
-                image.Dispose();
+            poseImages = newPoseImages;
+            legacyImages = newLegacyImages;
+
+            DisposeImages(oldPoseImages.Values);
+            DisposeImages(oldLegacyImages.Values);
         }
 
         public void Dispose()
         {
-            foreach (IndicatorImage image in images.Values)
-                image.Dispose();
-
-            images.Clear();
+            DisposeImages(poseImages.Values);
+            DisposeImages(legacyImages.Values);
+            poseImages.Clear();
+            legacyImages.Clear();
         }
 
-        private static void TryLoad(Dictionary<string, IndicatorImage> target, string imageDirectory, string label, string fileNameWithoutExtension)
+        private static void DisposeImages(IEnumerable<IndicatorImage> images)
+        {
+            foreach (IndicatorImage image in images)
+                image.Dispose();
+        }
+
+        private static void TryLoadPose(Dictionary<IndicatorPose, IndicatorImage> target, string imageDirectory, IndicatorPose pose, string fileNameWithoutExtension)
+        {
+            IndicatorImage image = TryLoadFromFile(imageDirectory, fileNameWithoutExtension);
+            if (image != null)
+                target[pose] = image;
+        }
+
+        private static void TryLoadLegacy(Dictionary<string, IndicatorImage> target, string imageDirectory, string label, string fileNameWithoutExtension)
+        {
+            IndicatorImage image = TryLoadFromFile(imageDirectory, fileNameWithoutExtension);
+            if (image != null)
+                target[label] = image;
+        }
+
+        private static IndicatorImage TryLoadFromFile(string imageDirectory, string fileNameWithoutExtension)
         {
             foreach (string extension in Extensions)
             {
@@ -503,14 +733,15 @@ namespace CursorImeIndicator
 
                 try
                 {
-                    target[label] = IndicatorImage.Load(path);
-                    return;
+                    return IndicatorImage.Load(path);
                 }
                 catch
                 {
-                    return;
+                    return null;
                 }
             }
+
+            return null;
         }
     }
 
@@ -570,6 +801,168 @@ namespace CursorImeIndicator
         }
     }
 
+    internal sealed class SizeSettingsForm : Form
+    {
+        private readonly TrackBar trackBar;
+        private readonly NumericUpDown numeric;
+        private readonly Label valueLabel;
+        private readonly Action<int> onChanged;
+        private bool updating;
+
+        public SizeSettingsForm(int initialPercent, Action<int> onChanged)
+        {
+            this.onChanged = onChanged;
+            Text = TextResources.DragSizeSettings;
+            FormBorderStyle = FormBorderStyle.FixedToolWindow;
+            MaximizeBox = false;
+            MinimizeBox = false;
+            ShowInTaskbar = false;
+            TopMost = true;
+            StartPosition = FormStartPosition.CenterScreen;
+            ClientSize = new Size(310, 118);
+
+            valueLabel = new Label();
+            valueLabel.AutoSize = false;
+            valueLabel.TextAlign = ContentAlignment.MiddleLeft;
+            valueLabel.Location = new Point(12, 10);
+            valueLabel.Size = new Size(180, 22);
+
+            numeric = new NumericUpDown();
+            numeric.Minimum = AppSettings.MinSizePercent;
+            numeric.Maximum = AppSettings.MaxSizePercent;
+            numeric.Increment = 5;
+            numeric.Location = new Point(210, 10);
+            numeric.Size = new Size(78, 22);
+            numeric.ValueChanged += OnNumericChanged;
+
+            trackBar = new TrackBar();
+            trackBar.Minimum = AppSettings.MinSizePercent;
+            trackBar.Maximum = AppSettings.MaxSizePercent;
+            trackBar.TickFrequency = 25;
+            trackBar.SmallChange = 5;
+            trackBar.LargeChange = 25;
+            trackBar.Location = new Point(10, 42);
+            trackBar.Size = new Size(286, 44);
+            trackBar.Scroll += OnTrackBarChanged;
+
+            Button closeButton = new Button();
+            closeButton.Text = TextResources.Close;
+            closeButton.Location = new Point(218, 86);
+            closeButton.Size = new Size(70, 24);
+            closeButton.Click += OnCloseClicked;
+
+            Controls.Add(valueLabel);
+            Controls.Add(numeric);
+            Controls.Add(trackBar);
+            Controls.Add(closeButton);
+
+            SetValue(initialPercent);
+        }
+
+        public void SetValue(int percent)
+        {
+            int value = AppSettings.ClampSizePercent(percent);
+            updating = true;
+            trackBar.Value = value;
+            numeric.Value = value;
+            valueLabel.Text = TextResources.SizeGain + ": " + value + "%";
+            updating = false;
+        }
+
+        private void OnTrackBarChanged(object sender, EventArgs e)
+        {
+            if (updating)
+                return;
+
+            int rounded = (int)Math.Round(trackBar.Value / 5.0d) * 5;
+            if (rounded != trackBar.Value)
+                trackBar.Value = rounded;
+
+            onChanged(rounded);
+        }
+
+        private void OnNumericChanged(object sender, EventArgs e)
+        {
+            if (updating)
+                return;
+
+            onChanged((int)numeric.Value);
+        }
+
+        private void OnCloseClicked(object sender, EventArgs e)
+        {
+            Close();
+        }
+    }
+
+    internal sealed class AppSettings
+    {
+        public const int MinSizePercent = 50;
+        public const int MaxSizePercent = 250;
+        private const int DefaultSizePercent = 100;
+
+        public int SizePercent = DefaultSizePercent;
+
+        public static AppSettings Load()
+        {
+            AppSettings settings = new AppSettings();
+            try
+            {
+                string path = GetSettingsPath();
+                if (!File.Exists(path))
+                    return settings;
+
+                string[] lines = File.ReadAllLines(path);
+                foreach (string line in lines)
+                {
+                    string[] parts = line.Split(new[] { '=' }, 2);
+                    if (parts.Length != 2)
+                        continue;
+
+                    if (parts[0].Trim().Equals("sizePercent", StringComparison.OrdinalIgnoreCase))
+                    {
+                        int value;
+                        if (int.TryParse(parts[1].Trim(), out value))
+                            settings.SizePercent = ClampSizePercent(value);
+                    }
+                }
+            }
+            catch
+            {
+            }
+
+            return settings;
+        }
+
+        public void Save()
+        {
+            try
+            {
+                string path = GetSettingsPath();
+                Directory.CreateDirectory(Path.GetDirectoryName(path));
+                File.WriteAllText(path, "sizePercent=" + ClampSizePercent(SizePercent));
+            }
+            catch
+            {
+            }
+        }
+
+        public static int ClampSizePercent(int value)
+        {
+            if (value < MinSizePercent)
+                return MinSizePercent;
+            if (value > MaxSizePercent)
+                return MaxSizePercent;
+            return value;
+        }
+
+        private static string GetSettingsPath()
+        {
+            string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            return Path.Combine(appData, "HanEnCursorIndicator", "settings.ini");
+        }
+    }
+
     internal static class ImeStateReader
     {
         private const int KoreanPrimaryLanguageId = 0x12;
@@ -577,10 +970,22 @@ namespace CursorImeIndicator
         private const int WmImeControl = 0x0283;
         private const int ImcGetConversionMode = 0x0001;
         private const int ImcGetOpenStatus = 0x0005;
+        private const int VkShift = 0x10;
+        private const int VkCapital = 0x14;
 
         public static string GetIndicatorText()
         {
-            return IsKoreanInputMode() ? Labels.Korean : Labels.English;
+            if (IsKoreanInputMode())
+                return Labels.Korean;
+
+            return IsUppercaseEnglishMode() ? Labels.EnglishUpper : Labels.EnglishLower;
+        }
+
+        private static bool IsUppercaseEnglishMode()
+        {
+            bool capsLock = (NativeMethods.GetKeyState(VkCapital) & 0x0001) != 0;
+            bool shiftDown = (NativeMethods.GetAsyncKeyState(VkShift) & unchecked((short)0x8000)) != 0;
+            return capsLock ^ shiftDown;
         }
 
         private static bool IsKoreanInputMode()
@@ -672,7 +1077,7 @@ namespace CursorImeIndicator
             Bitmap bitmap = new Bitmap(16, 16);
 
             using (Graphics graphics = Graphics.FromImage(bitmap))
-            using (Font font = new Font("Malgun Gothic", text == Labels.Korean ? 8.2f : 6.8f, FontStyle.Bold, GraphicsUnit.Point))
+            using (Font font = new Font("Malgun Gothic", text == Labels.Korean ? 8.2f : 6.6f, FontStyle.Bold, GraphicsUnit.Point))
             using (SolidBrush fill = new SolidBrush(text == Labels.Korean ? Color.FromArgb(24, 128, 91) : Color.FromArgb(38, 78, 140)))
             using (SolidBrush brush = new SolidBrush(Color.White))
             using (StringFormat format = new StringFormat())
@@ -735,6 +1140,12 @@ namespace CursorImeIndicator
 
         [DllImport("user32.dll")]
         public static extern IntPtr GetKeyboardLayout(uint idThread);
+
+        [DllImport("user32.dll")]
+        public static extern short GetKeyState(int nVirtKey);
+
+        [DllImport("user32.dll")]
+        public static extern short GetAsyncKeyState(int vKey);
 
         [DllImport("user32.dll")]
         [return: MarshalAs(UnmanagedType.Bool)]

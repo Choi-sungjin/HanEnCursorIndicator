@@ -1,7 +1,7 @@
 # HanEn Cursor Indicator
 
 Windows-only tray app that shows the current Korean/English input mode next to the mouse cursor.
-마우스 커서 바로 옆에 현재 입력 상태를 `한` / `en`으로 표시하는 Windows 전용 앱입니다.
+마우스 커서 바로 옆에 현재 입력 상태를 `한` / `en` / `EN`으로 표시하는 Windows 전용 앱입니다.
 
 ![HanEn Cursor Indicator demo](assets/demo.gif)
 
@@ -9,20 +9,20 @@ Windows-only tray app that shows the current Korean/English input mode next to t
 
 1. `dist/HanEnCursorIndicator.exe`를 실행합니다.
 2. 설치 과정 없이 바로 실행되고 Windows 트레이 아이콘이 추가됩니다.
-3. 한글 입력 상태에서는 커서 옆에 `한`이 표시됩니다.
-4. 영어 입력 상태에서는 커서 옆에 `en`이 표시됩니다.
-5. 트레이 아이콘 메뉴에서 커서 표시를 켜거나 끌 수 있습니다.
+3. 한글 입력 상태에서는 미니미 얼굴에 `한`이 표시됩니다.
+4. 영어 소문자 입력 상태에서는 `en`, 대문자 입력 상태에서는 `EN`이 표시됩니다.
+5. 입력 상태가 바뀌면 미니미가 1초 동안 마우스를 가리킨 뒤 정자세로 돌아옵니다.
+6. 일정 주기마다 만세 포즈가 표시됩니다.
 
 ## Download
 
-Run the single executable:
+Run the executable:
 
 ```text
 dist/HanEnCursorIndicator.exe
 ```
 
-No installer is required. The app starts immediately and adds a tray icon.
-기본 사용은 exe 파일 하나만 실행하면 됩니다.
+The app still works with only the exe. If `dist/images/` is included, the humanoid minimi mascot images are used automatically.
 
 ## Windows Support
 
@@ -30,71 +30,91 @@ No installer is required. The app starts immediately and adds a tray icon.
 - No separate installer required
 - Built with the .NET Framework compiler included on Windows
 
+## Included Mascot Images
+
+The default image pack uses exactly three pose files:
+
+| Pose | File | Behavior |
+| --- | --- | --- |
+| Idle | `dist/images/idle.png` | Normal standing pose |
+| Point | `dist/images/point.png` | Shown for 1 second after input mode changes |
+| Cheer | `dist/images/cheer.png` | Shown periodically |
+
+The app draws `한`, `en`, or `EN` on the mascot face at runtime, so you only need three pose images.
+
 ## Custom Images / 이미지 추가
 
-The app still works as a single exe by default. If you want custom badges, create an optional `images` folder next to the exe:
-기본은 exe 하나만 실행하면 됩니다. 커스텀 이미지를 쓰고 싶을 때만 exe 옆에 `images` 폴더를 만들면 됩니다.
+To replace the mascot, put your own three images next to the exe:
 
 ```text
 dist/
   HanEnCursorIndicator.exe
   images/
-    han.png
-    en.png
+    idle.png
+    point.png
+    cheer.png
 ```
 
-Supported file names:
+Supported image formats:
 
 ```text
-images/han.gif
-images/han.png
-images/han.jpg
-images/han.jpeg
-images/han.bmp
+images/idle.gif
+images/idle.png
+images/idle.jpg
+images/idle.jpeg
+images/idle.bmp
 
-images/en.gif
-images/en.png
-images/en.jpg
-images/en.jpeg
-images/en.bmp
+images/point.gif
+images/point.png
+images/point.jpg
+images/point.jpeg
+images/point.bmp
+
+images/cheer.gif
+images/cheer.png
+images/cheer.jpg
+images/cheer.jpeg
+images/cheer.bmp
 ```
 
 The app searches in this order: GIF, PNG, JPG, JPEG, BMP.
-중요: 이미지는 실행 중인 exe 바로 옆 `images` 폴더에서 찾습니다. 이 저장소 기준으로는 `dist/images/`입니다.
 
 Tips:
 
+- Use transparent PNG files for clean static mascot poses.
+- Use animated GIF files if you want a moving pose.
+- Leave a blank face area; the app draws `한`, `en`, or `EN` automatically.
 - Right-click the tray icon and choose `이미지 폴더 열기` to open the correct folder.
-- Put your files there as `han.png` / `en.png` or `han.gif` / `en.gif`.
-- Right-click the tray icon and choose `커스텀 이미지 다시 불러오기`.
-- The app shows a tray notification with the number of loaded custom images.
-- Use transparent PNG files for clean static badges.
-- Use animated GIF files for moving badges.
-- 32px to 64px square images work best.
-- After changing images while the app is running, use the tray menu item `커스텀 이미지 다시 불러오기`.
+- After changing files, choose `커스텀 이미지 다시 불러오기`.
 
-If nothing changes:
+## Size Control / 크기 조정
 
-- Check that the app you are running is `dist/HanEnCursorIndicator.exe`.
-- Check that images are inside `dist/images/`.
-- Check the exact file names: `han` for Korean, `en` for English.
-- Windows notifications may hide the reload balloon, but the image is still reloaded.
+Right-click the tray icon and open `크기`.
+
+- Choose a preset: `50%`, `75%`, `100%`, `125%`, `150%`, `200%`, `250%`.
+- Choose `드래그로 크기 조정` to open a slider.
+- Drag the slider with the mouse to tune the size gain by percentage.
+- The selected percentage is saved and reused next time.
 
 ## Animation Effects
 
 - Input-mode changes use a subtle pop animation.
-- Custom animated GIF badges keep their GIF animation.
-- If no custom image is found, the app falls back to the default `한` / `en` text badge.
+- `point.png` appears for 1 second after the language state changes.
+- `idle.png` returns after the point animation.
+- `cheer.png` appears periodically.
+- Custom animated GIF poses keep their GIF animation.
+- If no custom image is found, the app falls back to the default text badge.
 
 ## Features
 
-- Shows `한` next to the cursor when Korean input mode is active.
-- Shows `en` next to the cursor when English input mode is active.
-- Optional custom PNG/JPG/BMP/GIF badge images.
-- Animated GIF badge support.
-- Can be toggled from the Windows tray menu.
-- Double-click the tray icon to quickly turn the cursor indicator on or off.
-- Exit from the tray menu.
+- Shows `한` for Korean input mode.
+- Shows `en` for English lowercase mode.
+- Shows `EN` for English uppercase mode, including Caps Lock / Shift state.
+- Humanoid minimi mascot with three pose images.
+- Optional custom PNG/JPG/BMP/GIF images.
+- Tray menu on/off toggle.
+- Tray menu image reload.
+- Tray menu size presets and drag slider.
 
 ## MVP Direction
 
