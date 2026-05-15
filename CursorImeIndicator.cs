@@ -1418,6 +1418,8 @@ namespace CursorImeIndicator
                 if (RemovesTooMuch(bytes, background, width, height, stride))
                     background = FindConnectedBackground(bytes, width, height, stride, false);
 
+                ApplySubjectCropFallback(bytes, background, width, height, stride);
+
                 for (int p = 0; p < background.Length; p++)
                 {
                     if (!background[p])
@@ -1436,6 +1438,80 @@ namespace CursorImeIndicator
             {
                 bitmap.UnlockBits(data);
             }
+        }
+
+        private static void ApplySubjectCropFallback(byte[] bytes, bool[] background, int width, int height, int stride)
+        {
+            Rectangle remaining = GetRemainingBounds(bytes, background, width, height, stride);
+            if (remaining.Width <= 0 || remaining.Height <= 0)
+                return;
+
+            if (remaining.Width < width * 0.72d || remaining.Height < height * 0.62d)
+                return;
+
+            Rectangle crop;
+            bool[] subjectMask;
+            if (!TryFindSalientSubjectCrop(bytes, background, width, height, stride, out crop, out subjectMask))
+                return;
+
+            if (crop.Width <= 0 || crop.Height <= 0)
+                return;
+
+            if (subjectMask != null && CountMask(subjectMask) > (width * height * 0.004d) && CountMask(subjectMask) < (width * height * 0.62d))
+            {
+                for (int p = 0; p < background.Length; p++)
+                    background[p] = background[p] || !subjectMask[p];
+
+                return;
+            }
+
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    if (crop.Contains(x, y))
+                        continue;
+
+                    int p = (y * width) + x;
+                    background[p] = true;
+                }
+            }
+        }
+
+        private static Rectangle GetRemainingBounds(byte[] bytes, bool[] background, int width, int height, int stride)
+        {
+            int left = width;
+            int top = height;
+            int right = -1;
+            int bottom = -1;
+
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    int p = (y * width) + x;
+                    if (background[p])
+                        continue;
+
+                    int offset = (y * stride) + (x * 4);
+                    if (bytes[offset + 3] <= 12)
+                        continue;
+
+                    if (x < left)
+                        left = x;
+                    if (y < top)
+                        top = y;
+                    if (x > right)
+                        right = x;
+                    if (y > bottom)
+                        bottom = y;
+                }
+            }
+
+            if (right < left || bottom < top)
+                return Rectangle.Empty;
+
+            return Rectangle.FromLTRB(left, top, right + 1, bottom + 1);
         }
 
         private static Bitmap CreateResizedCutout(Bitmap source, int maxSize)
@@ -1563,6 +1639,217 @@ namespace CursorImeIndicator
             }
 
             return background;
+        }
+
+        private static bool TryFindSalientSubjectCrop(byte[] bytes, bool[] background, int width, int height, int stride, out Rectangle crop, out bool[] subjectMask)
+        {
+            bool[] salient = new bool[width * height];
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    int p = (y * width) + x;
+                    if (background[p])
+                        continue;
+
+                    int offset = (y * stride) + (x * 4);
+                    if (bytes[offset + 3] <= 12)
+                        continue;
+
+                    salient[p] = IsSalientForegroundPixel(bytes, offset);
+                }
+            }
+
+            bool[] visited = new bool[width * height];
+            int[] queue = new int[width * height];
+            double bestScore = 0.0d;
+            Rectangle best = Rectangle.Empty;
+            bool[] bestMask = null;
+            int minCount = Math.Max(20, (width * height) / 20000);
+
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    int start = (y * width) + x;
+                    if (!salient[start] || visited[start])
+                        continue;
+
+                    int head = 0;
+                    int tail = 0;
+                    int count = 0;
+                    int left = x;
+                    int top = y;
+                    int right = x;
+                    int bottom = y;
+                    double sumX = 0.0d;
+                    double sumY = 0.0d;
+                    bool touchesEdge = false;
+
+                    visited[start] = true;
+                    queue[tail++] = start;
+
+                    while (head < tail)
+                    {
+                        int p = queue[head++];
+                        int px = p % width;
+                        int py = p / width;
+
+                        count++;
+                        sumX += px;
+                        sumY += py;
+                        if (px < left)
+                            left = px;
+                        if (py < top)
+                            top = py;
+                        if (px > right)
+                            right = px;
+                        if (py > bottom)
+                            bottom = py;
+                        if (px <= 1 || py <= 1 || px >= width - 2 || py >= height - 2)
+                            touchesEdge = true;
+
+                        AddSalientNeighbor(salient, visited, queue, ref tail, width, height, px - 1, py);
+                        AddSalientNeighbor(salient, visited, queue, ref tail, width, height, px + 1, py);
+                        AddSalientNeighbor(salient, visited, queue, ref tail, width, height, px, py - 1);
+                        AddSalientNeighbor(salient, visited, queue, ref tail, width, height, px, py + 1);
+                    }
+
+                    if (touchesEdge || count < minCount)
+                        continue;
+
+                    double centerX = sumX / count;
+                    double centerY = sumY / count;
+                    double dx = (centerX - (width / 2.0d)) / Math.Max(1.0d, width / 2.0d);
+                    double dy = (centerY - (height / 2.0d)) / Math.Max(1.0d, height / 2.0d);
+                    double distance = Math.Sqrt((dx * dx) + (dy * dy));
+                    double boxArea = Math.Max(1, (right - left + 1) * (bottom - top + 1));
+                    double density = count / boxArea;
+                    double score = count * Math.Max(0.18d, 1.0d - (distance * 0.72d)) * Math.Max(0.30d, density);
+
+                    if (score > bestScore)
+                    {
+                        bestScore = score;
+                        best = Rectangle.FromLTRB(left, top, right + 1, bottom + 1);
+                        bestMask = new bool[width * height];
+                        for (int i = 0; i < tail; i++)
+                            bestMask[queue[i]] = true;
+                    }
+                }
+            }
+
+            if (bestScore <= 0.0d || best.IsEmpty)
+            {
+                crop = Rectangle.Empty;
+                subjectMask = null;
+                return false;
+            }
+
+            crop = ExpandSubjectCrop(best, width, height);
+            subjectMask = DilateMask(bestMask, width, height, Math.Max(5, Math.Min(width, height) / 58), crop);
+            return crop.Width > 0 && crop.Height > 0;
+        }
+
+        private static int CountMask(bool[] mask)
+        {
+            int count = 0;
+            for (int i = 0; i < mask.Length; i++)
+            {
+                if (mask[i])
+                    count++;
+            }
+
+            return count;
+        }
+
+        private static bool[] DilateMask(bool[] mask, int width, int height, int iterations, Rectangle limit)
+        {
+            if (mask == null)
+                return null;
+
+            bool[] current = mask;
+            for (int iteration = 0; iteration < iterations; iteration++)
+            {
+                bool[] next = new bool[current.Length];
+                for (int y = limit.Top; y < limit.Bottom; y++)
+                {
+                    for (int x = limit.Left; x < limit.Right; x++)
+                    {
+                        int p = (y * width) + x;
+                        if (!current[p])
+                            continue;
+
+                        SetMask(next, width, height, limit, x, y);
+                        SetMask(next, width, height, limit, x - 1, y);
+                        SetMask(next, width, height, limit, x + 1, y);
+                        SetMask(next, width, height, limit, x, y - 1);
+                        SetMask(next, width, height, limit, x, y + 1);
+                        SetMask(next, width, height, limit, x - 1, y - 1);
+                        SetMask(next, width, height, limit, x + 1, y - 1);
+                        SetMask(next, width, height, limit, x - 1, y + 1);
+                        SetMask(next, width, height, limit, x + 1, y + 1);
+                    }
+                }
+
+                current = next;
+            }
+
+            return current;
+        }
+
+        private static void SetMask(bool[] mask, int width, int height, Rectangle limit, int x, int y)
+        {
+            if (x < limit.Left || y < limit.Top || x >= limit.Right || y >= limit.Bottom)
+                return;
+            if (x < 0 || y < 0 || x >= width || y >= height)
+                return;
+
+            mask[(y * width) + x] = true;
+        }
+
+        private static void AddSalientNeighbor(bool[] salient, bool[] visited, int[] queue, ref int tail, int width, int height, int x, int y)
+        {
+            if (x < 0 || y < 0 || x >= width || y >= height)
+                return;
+
+            int p = (y * width) + x;
+            if (visited[p] || !salient[p])
+                return;
+
+            visited[p] = true;
+            queue[tail++] = p;
+        }
+
+        private static Rectangle ExpandSubjectCrop(Rectangle box, int width, int height)
+        {
+            int padX = Math.Max((int)Math.Round(width * 0.035d), (int)Math.Round(box.Width * 0.28d));
+            int padY = Math.Max((int)Math.Round(height * 0.045d), (int)Math.Round(box.Height * 0.20d));
+            int left = Math.Max(0, box.Left - padX);
+            int top = Math.Max(0, box.Top - padY);
+            int right = Math.Min(width, box.Right + padX);
+            int bottom = Math.Min(height, box.Bottom + padY);
+
+            return Rectangle.FromLTRB(left, top, right, bottom);
+        }
+
+        private static bool IsSalientForegroundPixel(byte[] bytes, int offset)
+        {
+            int b = bytes[offset];
+            int g = bytes[offset + 1];
+            int r = bytes[offset + 2];
+            int max = Math.Max(r, Math.Max(g, b));
+            int min = Math.Min(r, Math.Min(g, b));
+            double average = (r + g + b) / 3.0d;
+            double saturation = max == 0 ? 0.0d : (max - min) / (double)max;
+
+            if (average < 28.0d || average > 245.0d)
+                return false;
+
+            bool redDominant = r > 105 && r > g * 1.22d && r > b * 1.18d && saturation > 0.24d;
+            bool yellowDominant = r > 130 && g > 80 && r > b * 1.35d && saturation > 0.22d;
+            bool greenDominant = g > 70 && g > b * 1.12d && saturation > 0.26d;
+
+            return saturation > 0.38d || redDominant || yellowDominant || greenDominant;
         }
 
         private static void AddSeed(byte[] bytes, bool[] background, int[] queue, ref int tail, int width, int height, int stride, BackgroundColorModel model, int x, int y)
