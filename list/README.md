@@ -28,6 +28,6 @@ These are original mascot concepts generated for HanEn Cursor Indicator. They ar
 
 - `character-concept-sheet.png`: original generated 13-character concept sheet.
 - `character-pack-preview.gif`: animated preview cycling through the 13 concepts.
-- `01-*.png` through `13-*.png`: individual cropped concept images.
+- `01-*.png` through `13-*.png`: individual cropped concept images with transparent backgrounds.
 
 For production character packs, use these as concept references and create pose sets as either 3 shared images (`idle`, `point`, `cheer`) or 9 state-specific images (`ko/en/upper` x `idle/point/cheer`).
