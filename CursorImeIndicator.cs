@@ -1414,7 +1414,10 @@ namespace CursorImeIndicator
                 byte[] bytes = new byte[Math.Abs(stride) * height];
                 Marshal.Copy(data.Scan0, bytes, 0, bytes.Length);
 
-                bool[] background = FindConnectedBackground(bytes, width, height, stride);
+                bool[] background = FindConnectedBackground(bytes, width, height, stride, true);
+                if (RemovesTooMuch(bytes, background, width, height, stride))
+                    background = FindConnectedBackground(bytes, width, height, stride, false);
+
                 for (int p = 0; p < background.Length; p++)
                 {
                     if (!background[p])
@@ -1497,28 +1500,54 @@ namespace CursorImeIndicator
             return Rectangle.FromLTRB(left, top, right + 1, bottom + 1);
         }
 
-        private static bool[] FindConnectedBackground(byte[] bytes, int width, int height, int stride)
+        private static bool RemovesTooMuch(byte[] bytes, bool[] background, int width, int height, int stride)
+        {
+            int opaque = 0;
+            int removed = 0;
+
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    int p = (y * width) + x;
+                    int offset = (y * stride) + (x * 4);
+                    if (bytes[offset + 3] <= 12)
+                        continue;
+
+                    opaque++;
+                    if (background[p])
+                        removed++;
+                }
+            }
+
+            return opaque > 0 && removed > opaque * 0.88d;
+        }
+
+        private static bool[] FindConnectedBackground(byte[] bytes, int width, int height, int stride, bool useEdgeColorModel)
         {
             bool[] background = new bool[width * height];
             int[] queue = new int[width * height];
+            BackgroundColorModel model = useEdgeColorModel
+                ? BackgroundColorModel.Create(bytes, width, height, stride)
+                : BackgroundColorModel.Empty;
             int head = 0;
             int tail = 0;
 
-            AddSeed(bytes, background, queue, ref tail, width, height, stride, 0, 0);
-            AddSeed(bytes, background, queue, ref tail, width, height, stride, width - 1, 0);
-            AddSeed(bytes, background, queue, ref tail, width, height, stride, 0, height - 1);
-            AddSeed(bytes, background, queue, ref tail, width, height, stride, width - 1, height - 1);
+            AddSeed(bytes, background, queue, ref tail, width, height, stride, model, 0, 0);
+            AddSeed(bytes, background, queue, ref tail, width, height, stride, model, width - 1, 0);
+            AddSeed(bytes, background, queue, ref tail, width, height, stride, model, 0, height - 1);
+            AddSeed(bytes, background, queue, ref tail, width, height, stride, model, width - 1, height - 1);
 
             for (int x = 0; x < width; x++)
             {
-                AddSeed(bytes, background, queue, ref tail, width, height, stride, x, 0);
-                AddSeed(bytes, background, queue, ref tail, width, height, stride, x, height - 1);
+                AddSeed(bytes, background, queue, ref tail, width, height, stride, model, x, 0);
+                AddSeed(bytes, background, queue, ref tail, width, height, stride, model, x, height - 1);
             }
 
             for (int y = 0; y < height; y++)
             {
-                AddSeed(bytes, background, queue, ref tail, width, height, stride, 0, y);
-                AddSeed(bytes, background, queue, ref tail, width, height, stride, width - 1, y);
+                AddSeed(bytes, background, queue, ref tail, width, height, stride, model, 0, y);
+                AddSeed(bytes, background, queue, ref tail, width, height, stride, model, width - 1, y);
             }
 
             while (head < tail)
@@ -1527,16 +1556,16 @@ namespace CursorImeIndicator
                 int x = p % width;
                 int y = p / width;
 
-                AddSeed(bytes, background, queue, ref tail, width, height, stride, x - 1, y);
-                AddSeed(bytes, background, queue, ref tail, width, height, stride, x + 1, y);
-                AddSeed(bytes, background, queue, ref tail, width, height, stride, x, y - 1);
-                AddSeed(bytes, background, queue, ref tail, width, height, stride, x, y + 1);
+                AddSeed(bytes, background, queue, ref tail, width, height, stride, model, x - 1, y);
+                AddSeed(bytes, background, queue, ref tail, width, height, stride, model, x + 1, y);
+                AddSeed(bytes, background, queue, ref tail, width, height, stride, model, x, y - 1);
+                AddSeed(bytes, background, queue, ref tail, width, height, stride, model, x, y + 1);
             }
 
             return background;
         }
 
-        private static void AddSeed(byte[] bytes, bool[] background, int[] queue, ref int tail, int width, int height, int stride, int x, int y)
+        private static void AddSeed(byte[] bytes, bool[] background, int[] queue, ref int tail, int width, int height, int stride, BackgroundColorModel model, int x, int y)
         {
             if (x < 0 || y < 0 || x >= width || y >= height)
                 return;
@@ -1546,7 +1575,7 @@ namespace CursorImeIndicator
                 return;
 
             int offset = (y * stride) + (x * 4);
-            if (!IsBackgroundPixel(bytes, offset))
+            if (!IsBackgroundPixel(bytes, offset, model))
                 return;
 
             background[p] = true;
@@ -1554,7 +1583,7 @@ namespace CursorImeIndicator
             tail++;
         }
 
-        private static bool IsBackgroundPixel(byte[] bytes, int offset)
+        private static bool IsBackgroundPixel(byte[] bytes, int offset, BackgroundColorModel model)
         {
             int b = bytes[offset];
             int g = bytes[offset + 1];
@@ -1572,7 +1601,10 @@ namespace CursorImeIndicator
             if (r > 238 && g > 238 && b > 238)
                 return true;
 
-            return average > 188.0d && saturation < 0.16d;
+            if (average > 188.0d && saturation < 0.16d)
+                return true;
+
+            return model.Matches(bytes, offset);
         }
 
         private static void SoftenWhiteHalo(byte[] bytes, bool[] background, int width, int height, int stride)
@@ -1614,6 +1646,123 @@ namespace CursorImeIndicator
             double saturation = max == 0 ? 0.0d : (max - min) / (double)max;
 
             return average > 220.0d && saturation < 0.20d;
+        }
+
+        private sealed class BackgroundColorModel
+        {
+            public static readonly BackgroundColorModel Empty = new BackgroundColorModel(new List<ColorSample>(), 0.0d);
+
+            private readonly List<ColorSample> samples;
+            private readonly double toleranceSquared;
+
+            private BackgroundColorModel(List<ColorSample> samples, double tolerance)
+            {
+                this.samples = samples;
+                toleranceSquared = tolerance * tolerance;
+            }
+
+            public static BackgroundColorModel Create(byte[] bytes, int width, int height, int stride)
+            {
+                List<ColorSample> edgeSamples = new List<ColorSample>();
+                int step = Math.Max(1, Math.Min(width, height) / 48);
+
+                for (int x = 0; x < width; x += step)
+                {
+                    AddSample(edgeSamples, bytes, 0, x, 0, stride);
+                    AddSample(edgeSamples, bytes, 0, x, height - 1, stride);
+                }
+
+                for (int y = 0; y < height; y += step)
+                {
+                    AddSample(edgeSamples, bytes, 0, 0, y, stride);
+                    AddSample(edgeSamples, bytes, 0, width - 1, y, stride);
+                }
+
+                AddSample(edgeSamples, bytes, 0, width - 1, 0, stride);
+                AddSample(edgeSamples, bytes, 0, 0, height - 1, stride);
+                AddSample(edgeSamples, bytes, 0, width - 1, height - 1, stride);
+
+                if (edgeSamples.Count == 0)
+                    return new BackgroundColorModel(new List<ColorSample>(), 0.0d);
+
+                double r = 0.0d;
+                double g = 0.0d;
+                double b = 0.0d;
+                foreach (ColorSample sample in edgeSamples)
+                {
+                    r += sample.R;
+                    g += sample.G;
+                    b += sample.B;
+                }
+
+                r /= edgeSamples.Count;
+                g /= edgeSamples.Count;
+                b /= edgeSamples.Count;
+
+                double variance = 0.0d;
+                foreach (ColorSample sample in edgeSamples)
+                {
+                    double dr = sample.R - r;
+                    double dg = sample.G - g;
+                    double db = sample.B - b;
+                    variance += (dr * dr) + (dg * dg) + (db * db);
+                }
+
+                double deviation = Math.Sqrt(variance / edgeSamples.Count);
+                double tolerance = Math.Max(34.0d, Math.Min(76.0d, 28.0d + (deviation * 0.85d)));
+
+                List<ColorSample> anchors = new List<ColorSample>();
+                anchors.Add(new ColorSample((int)Math.Round(r), (int)Math.Round(g), (int)Math.Round(b)));
+                int strideSamples = Math.Max(1, edgeSamples.Count / 24);
+                for (int i = 0; i < edgeSamples.Count && anchors.Count < 28; i += strideSamples)
+                    anchors.Add(edgeSamples[i]);
+
+                return new BackgroundColorModel(anchors, tolerance);
+            }
+
+            public bool Matches(byte[] bytes, int offset)
+            {
+                if (samples.Count == 0)
+                    return false;
+
+                int b = bytes[offset];
+                int g = bytes[offset + 1];
+                int r = bytes[offset + 2];
+
+                foreach (ColorSample sample in samples)
+                {
+                    double dr = r - sample.R;
+                    double dg = g - sample.G;
+                    double db = b - sample.B;
+                    if ((dr * dr) + (dg * dg) + (db * db) <= toleranceSquared)
+                        return true;
+                }
+
+                return false;
+            }
+
+            private static void AddSample(List<ColorSample> samples, byte[] bytes, int unused, int x, int y, int stride)
+            {
+                int offset = (y * stride) + (x * 4);
+                if (bytes[offset + 3] < 8)
+                    return;
+
+                samples.Add(new ColorSample(bytes[offset + 2], bytes[offset + 1], bytes[offset]));
+            }
+        }
+
+        private struct ColorSample
+        {
+            public readonly int R;
+            public readonly int G;
+            public readonly int B;
+
+            public ColorSample(int r, int g, int b)
+            {
+                R = r;
+                G = g;
+                B = b;
+            }
         }
     }
 

@@ -121,7 +121,7 @@ Tips:
 - With a 9-image pack, you can include the text directly in each image and turn off `글자 표시` from the tray menu.
 - Right-click the tray icon and choose `이미지 폴더 열기` to open the correct folder.
 - After changing files, choose `커스텀 이미지 다시 불러오기`.
-- Choose `이미지 누끼 처리` from the tray menu to select one or more images and save transparent `*-cutout.png` copies. The default option also shrinks large images to a lightweight 160px app-ready PNG.
+- Choose `이미지 누끼 처리` from the tray menu to select one or more images and save transparent `*-cutout.png` copies. It samples the outer edge color to remove connected backgrounds, and the default option shrinks large images to a lightweight 160px app-ready PNG.
 
 ## Size Control / 크기 조정
 
