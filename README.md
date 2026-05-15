@@ -42,6 +42,10 @@ The default image pack uses three shared pose files:
 
 The app draws `한`, `en`, or `EN` on the mascot face at runtime, so the basic pack only needs three pose images.
 
+## Character Concepts
+
+See [`list/`](list/) for 13 original mascot concept images and an animated preview GIF.
+
 ## Custom Images / 이미지 추가
 
 To replace the mascot, put images next to the exe. You can use either a 3-image shared pack or a 9-image state pack.
