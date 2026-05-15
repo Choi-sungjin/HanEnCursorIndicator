@@ -161,6 +161,21 @@ Right-click the tray icon and open `미니미 색상`.
 - `영어 대문자 색상 선택`: clothing color used when the label is `EN`.
 - The face label stays readable while the body/clothing area is recolored.
 
+## Voice / Supertone TTS
+
+Right-click the tray icon and open `보이스`.
+
+- Turn on `드래그 텍스트 읽기` to read selected text after a mouse drag.
+- Open `Supertone API 설정` and enter your own API Key, Voice ID, language, model, style, speed, and max text length.
+- The API Key is saved per Windows user with Windows DPAPI encryption at `%APPDATA%\HanEnCursorIndicator\supertone.key`.
+- The API Key is not saved in `settings.ini`, not included in Git, and is never shown again in the settings window.
+- Drag selection uses a brief `Ctrl+C` copy, sanitizes the copied text, restores the previous clipboard data, and then calls Supertone.
+- Symbols and separators such as `-`, `ㅡ`, `_`, `@`, `#`, and emoji are removed so they are not spoken as symbol names.
+- Text is capped at 300 characters to match Supertone's Text to Speech API limit.
+- `클립보드 텍스트 테스트` reads the current clipboard text so you can test without dragging.
+
+Supported model names in the settings menu follow the Supertone API docs: `sona_speech_1`, `sona_speech_2`, `sona_speech_2_flash`, `sona_speech_2t`, and `supertonic_api_1`.
+
 ## Animation Effects
 
 - Input-mode changes use a subtle pop animation.
@@ -184,6 +199,7 @@ Right-click the tray icon and open `미니미 색상`.
 - Tray menu size presets and drag slider.
 - Tray menu state + pose label-position drag editor.
 - Tray menu mascot color picker.
+- Tray menu Supertone voice settings with encrypted per-PC API key storage.
 
 ## MVP Direction
 

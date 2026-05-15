@@ -6,8 +6,11 @@ using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Globalization;
 using System.IO;
+using System.Net;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
+using System.Text;
 using System.Threading;
 using System.Windows.Forms;
 
@@ -170,11 +173,32 @@ namespace CursorImeIndicator
         public const string Close = "\uB2EB\uAE30";
         public const string Exit = "\uC885\uB8CC";
         public const string TrayTitle = "\uD55C/En \uB9C8\uC6B0\uC2A4 \uD45C\uC2DC\uAE30";
+        public const string VoiceMenu = "\uBCF4\uC774\uC2A4";
+        public const string VoiceOnDrag = "\uB4DC\uB798\uADF8 \uD14D\uC2A4\uD2B8 \uC77D\uAE30";
+        public const string VoiceSettings = "Supertone API \uC124\uC815";
+        public const string VoiceTestClipboard = "\uD074\uB9BD\uBCF4\uB4DC \uD14D\uC2A4\uD2B8 \uD14C\uC2A4\uD2B8";
+        public const string ApiKey = "API Key";
+        public const string VoiceId = "Voice ID";
+        public const string Language = "\uC5B8\uC5B4";
+        public const string Model = "\uBAA8\uB378";
+        public const string Style = "\uC2A4\uD0C0\uC77C";
+        public const string Speed = "\uC18D\uB3C4";
+        public const string MaxTextLength = "\uCD5C\uB300 \uBB38\uC790 \uC218";
+        public const string Save = "\uC800\uC7A5";
+        public const string ClearApiKey = "API Key \uC0AD\uC81C";
+        public const string ApiKeySaved = "\uC800\uC7A5\uB41C API Key: \uC788\uC74C";
+        public const string ApiKeyMissing = "\uC800\uC7A5\uB41C API Key: \uC5C6\uC74C";
+        public const string VoiceSaved = "\uBCF4\uC774\uC2A4 \uC124\uC815\uC744 \uC800\uC7A5\uD588\uC2B5\uB2C8\uB2E4.";
+        public const string VoiceMissingConfig = "API Key\uC640 Voice ID\uB97C \uBA3C\uC800 \uC124\uC815\uD558\uC138\uC694.";
+        public const string VoiceNoText = "\uC77D\uC744 \uD14D\uC2A4\uD2B8\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.";
+        public const string VoiceFailed = "\uC74C\uC131 \uC0DD\uC131 \uC2E4\uD328: ";
+        public const string VoiceReady = "\uB4DC\uB798\uADF8\uD55C \uD14D\uC2A4\uD2B8\uB97C Supertone\uC73C\uB85C \uC77D\uC744 \uC900\uBE44\uAC00 \uB410\uC2B5\uB2C8\uB2E4.";
     }
 
     internal sealed class IndicatorContext : ApplicationContext
     {
         private readonly AppSettings settings;
+        private readonly VoiceSettings voiceSettings;
         private readonly IndicatorAssets assets;
         private readonly IndicatorForm indicatorForm;
         private readonly System.Windows.Forms.Timer timer;
@@ -182,19 +206,36 @@ namespace CursorImeIndicator
         private readonly ToolStripMenuItem enabledItem;
         private readonly ToolStripMenuItem stateItem;
         private readonly ToolStripMenuItem sizeMenu;
+        private readonly ToolStripMenuItem voiceMenu;
+        private ToolStripMenuItem voiceEnabledItem;
         private readonly ToolStripMenuItem showLabelItem;
         private ToolStripMenuItem colorMenu;
         private ToolStripMenuItem useLanguageColorsItem;
         private readonly List<ToolStripMenuItem> sizePresetItems = new List<ToolStripMenuItem>();
+        private readonly SynchronizationContext uiContext;
         private Icon currentTrayIcon;
         private SizeSettingsForm sizeSettingsForm;
         private FaceCenterSettingsForm faceCenterSettingsForm;
+        private VoiceSettingsForm voiceSettingsForm;
+        private SelectionDragWatcher selectionDragWatcher;
         private bool enabled = true;
+        private bool voiceBusy;
+        private bool missingVoiceConfigBalloonShown;
         private string lastText = "";
+        private string lastVoiceText = "";
+        private DateTime lastVoiceRequestUtc = DateTime.MinValue;
 
         public IndicatorContext()
         {
+            uiContext = SynchronizationContext.Current;
+            if (uiContext == null)
+            {
+                uiContext = new WindowsFormsSynchronizationContext();
+                SynchronizationContext.SetSynchronizationContext(uiContext);
+            }
+
             settings = AppSettings.Load();
+            voiceSettings = VoiceSettings.Load();
             assets = new IndicatorAssets();
             indicatorForm = new IndicatorForm(assets, settings);
 
@@ -209,6 +250,7 @@ namespace CursorImeIndicator
             sizeMenu = CreateSizeMenu();
             UpdateSizeMenuChecks();
             colorMenu = CreateColorMenu();
+            voiceMenu = CreateVoiceMenu();
             showLabelItem = new ToolStripMenuItem(TextResources.ShowLabel);
             showLabelItem.CheckOnClick = true;
             showLabelItem.Checked = settings.ShowLabel;
@@ -224,6 +266,7 @@ namespace CursorImeIndicator
             menu.Items.Add(colorMenu);
             menu.Items.Add(showLabelItem);
             menu.Items.Add(new ToolStripMenuItem(TextResources.AdjustFaceCenter, null, OnOpenFaceCenterSettings));
+            menu.Items.Add(voiceMenu);
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add(new ToolStripMenuItem(TextResources.Exit, null, OnExit));
 
@@ -239,6 +282,8 @@ namespace CursorImeIndicator
             timer.Interval = 30;
             timer.Tick += OnTimerTick;
             timer.Start();
+
+            UpdateVoiceWatcher();
         }
 
         private ToolStripMenuItem CreateSizeMenu()
@@ -274,6 +319,21 @@ namespace CursorImeIndicator
             menu.DropDownItems.Add(new ToolStripMenuItem(TextResources.KoreanColor, null, OnChooseKoreanColor));
             menu.DropDownItems.Add(new ToolStripMenuItem(TextResources.EnglishLowerColor, null, OnChooseEnglishLowerColor));
             menu.DropDownItems.Add(new ToolStripMenuItem(TextResources.EnglishUpperColor, null, OnChooseEnglishUpperColor));
+            return menu;
+        }
+
+        private ToolStripMenuItem CreateVoiceMenu()
+        {
+            ToolStripMenuItem menu = new ToolStripMenuItem(TextResources.VoiceMenu);
+
+            voiceEnabledItem = new ToolStripMenuItem(TextResources.VoiceOnDrag);
+            voiceEnabledItem.CheckOnClick = true;
+            voiceEnabledItem.Checked = voiceSettings.Enabled;
+            voiceEnabledItem.CheckedChanged += OnVoiceEnabledChanged;
+
+            menu.DropDownItems.Add(voiceEnabledItem);
+            menu.DropDownItems.Add(new ToolStripMenuItem(TextResources.VoiceSettings, null, OnOpenVoiceSettings));
+            menu.DropDownItems.Add(new ToolStripMenuItem(TextResources.VoiceTestClipboard, null, OnVoiceTestClipboard));
             return menu;
         }
 
@@ -420,6 +480,164 @@ namespace CursorImeIndicator
             faceCenterSettingsForm = null;
         }
 
+        private void OnVoiceEnabledChanged(object sender, EventArgs e)
+        {
+            voiceSettings.Enabled = voiceEnabledItem.Checked;
+            voiceSettings.Save();
+            missingVoiceConfigBalloonShown = false;
+            UpdateVoiceWatcher();
+
+            if (voiceSettings.Enabled)
+                ShowVoiceBalloon(TextResources.VoiceReady, 2000);
+        }
+
+        private void OnOpenVoiceSettings(object sender, EventArgs e)
+        {
+            if (voiceSettingsForm == null || voiceSettingsForm.IsDisposed)
+            {
+                voiceSettingsForm = new VoiceSettingsForm(voiceSettings, OnVoiceSettingsSaved);
+                voiceSettingsForm.FormClosed += OnVoiceSettingsFormClosed;
+            }
+
+            voiceSettingsForm.Reload();
+            voiceSettingsForm.Show();
+            voiceSettingsForm.Activate();
+        }
+
+        private void OnVoiceSettingsFormClosed(object sender, FormClosedEventArgs e)
+        {
+            voiceSettingsForm = null;
+        }
+
+        private void OnVoiceSettingsSaved()
+        {
+            voiceSettings.Save();
+            missingVoiceConfigBalloonShown = false;
+
+            if (voiceEnabledItem != null && voiceEnabledItem.Checked != voiceSettings.Enabled)
+                voiceEnabledItem.Checked = voiceSettings.Enabled;
+            else
+                UpdateVoiceWatcher();
+
+            ShowVoiceBalloon(TextResources.VoiceSaved, 2200);
+        }
+
+        private void OnVoiceTestClipboard(object sender, EventArgs e)
+        {
+            string text = "";
+            try
+            {
+                if (Clipboard.ContainsText())
+                    text = Clipboard.GetText();
+            }
+            catch
+            {
+            }
+
+            SpeakSanitizedText(text, true);
+        }
+
+        private void UpdateVoiceWatcher()
+        {
+            if (voiceSettings.Enabled)
+            {
+                if (selectionDragWatcher == null)
+                    selectionDragWatcher = new SelectionDragWatcher(uiContext, OnSelectionDragCompleted);
+                selectionDragWatcher.Start();
+                return;
+            }
+
+            if (selectionDragWatcher != null)
+                selectionDragWatcher.Stop();
+        }
+
+        private void OnSelectionDragCompleted()
+        {
+            if (!voiceSettings.Enabled)
+                return;
+
+            DateTime now = DateTime.UtcNow;
+            if ((now - lastVoiceRequestUtc).TotalMilliseconds < 900)
+                return;
+
+            string selectedText = ClipboardSelectionReader.TryCopySelectionText();
+            SpeakSanitizedText(selectedText, false);
+        }
+
+        private void SpeakSanitizedText(string rawText, bool manual)
+        {
+            string text = VoiceTextSanitizer.Sanitize(rawText, voiceSettings.MaxTextLength);
+            if (text.Length == 0)
+            {
+                if (manual)
+                    ShowVoiceBalloon(TextResources.VoiceNoText, 2500);
+                return;
+            }
+
+            DateTime now = DateTime.UtcNow;
+            if (!manual && text == lastVoiceText && (now - lastVoiceRequestUtc).TotalSeconds < 2)
+                return;
+
+            SpeakText(text, manual);
+        }
+
+        private void SpeakText(string text, bool manual)
+        {
+            string apiKey = VoiceSettings.LoadApiKey();
+            if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(voiceSettings.VoiceId.Trim()))
+            {
+                if (manual || !missingVoiceConfigBalloonShown)
+                    ShowVoiceBalloon(TextResources.VoiceMissingConfig, 3500);
+
+                missingVoiceConfigBalloonShown = true;
+                return;
+            }
+
+            if (voiceBusy)
+                return;
+
+            VoiceRequestOptions request = voiceSettings.CreateRequest(text, apiKey);
+            voiceBusy = true;
+            lastVoiceText = text;
+            lastVoiceRequestUtc = DateTime.UtcNow;
+
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                string error = null;
+                try
+                {
+                    string audioPath = SupertoneTtsClient.CreateSpeechFile(request);
+                    VoiceAudioPlayer.PlayWavAndDelete(audioPath);
+                }
+                catch (Exception ex)
+                {
+                    error = ex.Message;
+                }
+
+                PostToUi(delegate
+                {
+                    voiceBusy = false;
+                    if (!string.IsNullOrEmpty(error))
+                        ShowVoiceBalloon(TextResources.VoiceFailed + error, 4500);
+                });
+            });
+        }
+
+        private void PostToUi(Action action)
+        {
+            if (uiContext != null)
+                uiContext.Post(delegate { action(); }, null);
+            else
+                action();
+        }
+
+        private void ShowVoiceBalloon(string text, int timeout)
+        {
+            trayIcon.BalloonTipTitle = TextResources.VoiceMenu;
+            trayIcon.BalloonTipText = text;
+            trayIcon.ShowBalloonTip(timeout);
+        }
+
         private void SetSizePercent(int percent)
         {
             settings.SizePercent = AppSettings.ClampSizePercent(percent);
@@ -564,6 +782,10 @@ namespace CursorImeIndicator
                     sizeSettingsForm.Dispose();
                 if (faceCenterSettingsForm != null)
                     faceCenterSettingsForm.Dispose();
+                if (voiceSettingsForm != null)
+                    voiceSettingsForm.Dispose();
+                if (selectionDragWatcher != null)
+                    selectionDragWatcher.Dispose();
             }
 
             base.Dispose(disposing);
@@ -2143,6 +2365,241 @@ namespace CursorImeIndicator
         }
     }
 
+    internal sealed class VoiceSettingsForm : Form
+    {
+        private readonly VoiceSettings settings;
+        private readonly Action onSaved;
+        private readonly CheckBox enabledCheck;
+        private readonly TextBox apiKeyBox;
+        private readonly Label apiKeyStatusLabel;
+        private readonly TextBox voiceIdBox;
+        private readonly ComboBox languageCombo;
+        private readonly ComboBox modelCombo;
+        private readonly TextBox styleBox;
+        private readonly NumericUpDown speedNumeric;
+        private readonly NumericUpDown maxTextLengthNumeric;
+
+        public VoiceSettingsForm(VoiceSettings settings, Action onSaved)
+        {
+            this.settings = settings;
+            this.onSaved = onSaved;
+
+            Text = TextResources.VoiceSettings;
+            FormBorderStyle = FormBorderStyle.FixedToolWindow;
+            MaximizeBox = false;
+            MinimizeBox = false;
+            ShowInTaskbar = false;
+            TopMost = true;
+            StartPosition = FormStartPosition.CenterScreen;
+            ClientSize = new Size(500, 318);
+
+            enabledCheck = new CheckBox();
+            enabledCheck.Text = TextResources.VoiceOnDrag;
+            enabledCheck.Location = new Point(14, 14);
+            enabledCheck.Size = new Size(250, 24);
+
+            Label apiLabel = CreateLabel(TextResources.ApiKey, 14, 50);
+            apiKeyBox = new TextBox();
+            apiKeyBox.Location = new Point(112, 48);
+            apiKeyBox.Size = new Size(366, 22);
+            apiKeyBox.PasswordChar = '*';
+
+            apiKeyStatusLabel = new Label();
+            apiKeyStatusLabel.Location = new Point(112, 72);
+            apiKeyStatusLabel.Size = new Size(366, 20);
+
+            Label voiceIdLabel = CreateLabel(TextResources.VoiceId, 14, 100);
+            voiceIdBox = new TextBox();
+            voiceIdBox.Location = new Point(112, 98);
+            voiceIdBox.Size = new Size(366, 22);
+
+            Label languageLabel = CreateLabel(TextResources.Language, 14, 130);
+            languageCombo = new ComboBox();
+            languageCombo.DropDownStyle = ComboBoxStyle.DropDownList;
+            languageCombo.Location = new Point(112, 128);
+            languageCombo.Size = new Size(100, 24);
+            languageCombo.Items.Add("ko");
+            languageCombo.Items.Add("en");
+            languageCombo.Items.Add("ja");
+            languageCombo.Items.Add("bg");
+            languageCombo.Items.Add("cs");
+            languageCombo.Items.Add("da");
+            languageCombo.Items.Add("el");
+            languageCombo.Items.Add("es");
+            languageCombo.Items.Add("et");
+            languageCombo.Items.Add("fi");
+            languageCombo.Items.Add("hu");
+            languageCombo.Items.Add("it");
+            languageCombo.Items.Add("nl");
+            languageCombo.Items.Add("pl");
+            languageCombo.Items.Add("pt");
+            languageCombo.Items.Add("ro");
+            languageCombo.Items.Add("ar");
+            languageCombo.Items.Add("de");
+            languageCombo.Items.Add("fr");
+            languageCombo.Items.Add("hi");
+            languageCombo.Items.Add("id");
+            languageCombo.Items.Add("ru");
+            languageCombo.Items.Add("vi");
+
+            Label modelLabel = CreateLabel(TextResources.Model, 222, 130);
+            modelLabel.Size = new Size(54, 20);
+            modelCombo = new ComboBox();
+            modelCombo.DropDownStyle = ComboBoxStyle.DropDown;
+            modelCombo.Location = new Point(284, 128);
+            modelCombo.Size = new Size(194, 24);
+            modelCombo.Items.Add("sona_speech_1");
+            modelCombo.Items.Add("sona_speech_2");
+            modelCombo.Items.Add("sona_speech_2_flash");
+            modelCombo.Items.Add("sona_speech_2t");
+            modelCombo.Items.Add("supertonic_api_1");
+
+            Label styleLabel = CreateLabel(TextResources.Style, 14, 162);
+            styleBox = new TextBox();
+            styleBox.Location = new Point(112, 160);
+            styleBox.Size = new Size(366, 22);
+
+            Label speedLabel = CreateLabel(TextResources.Speed, 14, 194);
+            speedNumeric = new NumericUpDown();
+            speedNumeric.Location = new Point(112, 192);
+            speedNumeric.Size = new Size(100, 22);
+            speedNumeric.Minimum = VoiceSettings.MinSpeedPercent;
+            speedNumeric.Maximum = VoiceSettings.MaxSpeedPercent;
+            speedNumeric.Increment = 5;
+
+            Label maxTextLengthLabel = CreateLabel(TextResources.MaxTextLength, 222, 194);
+            maxTextLengthNumeric = new NumericUpDown();
+            maxTextLengthNumeric.Location = new Point(408, 192);
+            maxTextLengthNumeric.Size = new Size(70, 22);
+            maxTextLengthNumeric.Minimum = 1;
+            maxTextLengthNumeric.Maximum = VoiceSettings.MaxAllowedTextLength;
+
+            Button clearKeyButton = new Button();
+            clearKeyButton.Text = TextResources.ClearApiKey;
+            clearKeyButton.Location = new Point(14, 238);
+            clearKeyButton.Size = new Size(116, 28);
+            clearKeyButton.Click += OnClearApiKeyClicked;
+
+            Button saveButton = new Button();
+            saveButton.Text = TextResources.Save;
+            saveButton.Location = new Point(318, 274);
+            saveButton.Size = new Size(76, 28);
+            saveButton.Click += OnSaveClicked;
+
+            Button closeButton = new Button();
+            closeButton.Text = TextResources.Close;
+            closeButton.Location = new Point(402, 274);
+            closeButton.Size = new Size(76, 28);
+            closeButton.Click += OnCloseClicked;
+
+            Controls.Add(enabledCheck);
+            Controls.Add(apiLabel);
+            Controls.Add(apiKeyBox);
+            Controls.Add(apiKeyStatusLabel);
+            Controls.Add(voiceIdLabel);
+            Controls.Add(voiceIdBox);
+            Controls.Add(languageLabel);
+            Controls.Add(languageCombo);
+            Controls.Add(modelLabel);
+            Controls.Add(modelCombo);
+            Controls.Add(styleLabel);
+            Controls.Add(styleBox);
+            Controls.Add(speedLabel);
+            Controls.Add(speedNumeric);
+            Controls.Add(maxTextLengthLabel);
+            Controls.Add(maxTextLengthNumeric);
+            Controls.Add(clearKeyButton);
+            Controls.Add(saveButton);
+            Controls.Add(closeButton);
+
+            Reload();
+        }
+
+        public void Reload()
+        {
+            enabledCheck.Checked = settings.Enabled;
+            apiKeyBox.Text = "";
+            voiceIdBox.Text = settings.VoiceId;
+            SelectComboText(languageCombo, settings.Language);
+            modelCombo.Text = settings.Model;
+            styleBox.Text = settings.Style;
+            speedNumeric.Value = VoiceSettings.ClampSpeedPercent(settings.SpeedPercent);
+            maxTextLengthNumeric.Value = VoiceSettings.ClampMaxTextLength(settings.MaxTextLength);
+            UpdateApiKeyStatus();
+        }
+
+        private static Label CreateLabel(string text, int x, int y)
+        {
+            Label label = new Label();
+            label.Text = text;
+            label.Location = new Point(x, y + 3);
+            label.Size = new Size(98, 20);
+            return label;
+        }
+
+        private static void SelectComboText(ComboBox comboBox, string text)
+        {
+            for (int i = 0; i < comboBox.Items.Count; i++)
+            {
+                if (string.Equals(comboBox.Items[i].ToString(), text, StringComparison.OrdinalIgnoreCase))
+                {
+                    comboBox.SelectedIndex = i;
+                    return;
+                }
+            }
+
+            if (comboBox.Items.Count > 0)
+                comboBox.SelectedIndex = 0;
+        }
+
+        private void OnSaveClicked(object sender, EventArgs e)
+        {
+            try
+            {
+                settings.Enabled = enabledCheck.Checked;
+                settings.VoiceId = voiceIdBox.Text.Trim();
+                settings.Language = languageCombo.Text.Trim().ToLowerInvariant();
+                settings.Model = modelCombo.Text.Trim();
+                settings.Style = styleBox.Text.Trim();
+                settings.SpeedPercent = VoiceSettings.ClampSpeedPercent((int)speedNumeric.Value);
+                settings.MaxTextLength = VoiceSettings.ClampMaxTextLength((int)maxTextLengthNumeric.Value);
+
+                string apiKey = apiKeyBox.Text.Trim();
+                if (apiKey.Length > 0)
+                {
+                    VoiceSettings.SaveApiKey(apiKey);
+                    apiKeyBox.Text = "";
+                }
+
+                settings.Save();
+                UpdateApiKeyStatus();
+                if (onSaved != null)
+                    onSaved();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(ex.Message, TextResources.VoiceSettings, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        }
+
+        private void OnClearApiKeyClicked(object sender, EventArgs e)
+        {
+            VoiceSettings.ClearApiKey();
+            apiKeyBox.Text = "";
+            UpdateApiKeyStatus();
+        }
+
+        private void OnCloseClicked(object sender, EventArgs e)
+        {
+            Close();
+        }
+
+        private void UpdateApiKeyStatus()
+        {
+            apiKeyStatusLabel.Text = VoiceSettings.HasApiKey() ? TextResources.ApiKeySaved : TextResources.ApiKeyMissing;
+        }
+    }
+
     internal sealed class SizeSettingsForm : Form
     {
         private readonly TrackBar trackBar;
@@ -2569,6 +3026,694 @@ namespace CursorImeIndicator
         }
 
         public PointF Center { get; private set; }
+    }
+
+    internal sealed class VoiceSettings
+    {
+        public const int MinSpeedPercent = 50;
+        public const int MaxSpeedPercent = 200;
+        public const int MaxAllowedTextLength = 300;
+
+        public bool Enabled = false;
+        public string VoiceId = "";
+        public string Language = "ko";
+        public string Model = "sona_speech_1";
+        public string Style = "";
+        public int SpeedPercent = 100;
+        public int MaxTextLength = MaxAllowedTextLength;
+
+        public static VoiceSettings Load()
+        {
+            VoiceSettings settings = new VoiceSettings();
+            try
+            {
+                string path = GetSettingsPath();
+                if (!File.Exists(path))
+                    return settings;
+
+                string[] lines = File.ReadAllLines(path);
+                foreach (string line in lines)
+                {
+                    string[] parts = line.Split(new[] { '=' }, 2);
+                    if (parts.Length != 2)
+                        continue;
+
+                    string key = parts[0].Trim();
+                    string value = parts[1].Trim();
+                    if (key.Equals("enabled", StringComparison.OrdinalIgnoreCase))
+                    {
+                        bool enabled;
+                        if (bool.TryParse(value, out enabled))
+                            settings.Enabled = enabled;
+                    }
+                    else if (key.Equals("voiceId", StringComparison.OrdinalIgnoreCase))
+                    {
+                        settings.VoiceId = value;
+                    }
+                    else if (key.Equals("language", StringComparison.OrdinalIgnoreCase))
+                    {
+                        settings.Language = NormalizeLanguage(value);
+                    }
+                    else if (key.Equals("model", StringComparison.OrdinalIgnoreCase))
+                    {
+                        settings.Model = value;
+                    }
+                    else if (key.Equals("style", StringComparison.OrdinalIgnoreCase))
+                    {
+                        settings.Style = value;
+                    }
+                    else if (key.Equals("speedPercent", StringComparison.OrdinalIgnoreCase))
+                    {
+                        int speed;
+                        if (int.TryParse(value, out speed))
+                            settings.SpeedPercent = ClampSpeedPercent(speed);
+                    }
+                    else if (key.Equals("maxTextLength", StringComparison.OrdinalIgnoreCase))
+                    {
+                        int maxTextLength;
+                        if (int.TryParse(value, out maxTextLength))
+                            settings.MaxTextLength = ClampMaxTextLength(maxTextLength);
+                    }
+                }
+            }
+            catch
+            {
+            }
+
+            return settings;
+        }
+
+        public void Save()
+        {
+            try
+            {
+                string path = GetSettingsPath();
+                Directory.CreateDirectory(Path.GetDirectoryName(path));
+                List<string> lines = new List<string>();
+                lines.Add("enabled=" + Enabled);
+                lines.Add("voiceId=" + VoiceId.Trim());
+                lines.Add("language=" + NormalizeLanguage(Language));
+                lines.Add("model=" + Model.Trim());
+                lines.Add("style=" + Style.Trim());
+                lines.Add("speedPercent=" + ClampSpeedPercent(SpeedPercent));
+                lines.Add("maxTextLength=" + ClampMaxTextLength(MaxTextLength));
+                File.WriteAllLines(path, lines.ToArray());
+            }
+            catch
+            {
+            }
+        }
+
+        public VoiceRequestOptions CreateRequest(string text, string apiKey)
+        {
+            VoiceRequestOptions request = new VoiceRequestOptions();
+            request.ApiKey = apiKey;
+            request.VoiceId = VoiceId.Trim();
+            request.Text = text;
+            request.Language = NormalizeLanguage(Language);
+            request.Model = Model.Trim();
+            request.Style = Style.Trim();
+            request.SpeedPercent = ClampSpeedPercent(SpeedPercent);
+            return request;
+        }
+
+        public static int ClampSpeedPercent(int value)
+        {
+            if (value < MinSpeedPercent)
+                return MinSpeedPercent;
+            if (value > MaxSpeedPercent)
+                return MaxSpeedPercent;
+            return value;
+        }
+
+        public static int ClampMaxTextLength(int value)
+        {
+            if (value < 1)
+                return 1;
+            if (value > MaxAllowedTextLength)
+                return MaxAllowedTextLength;
+            return value;
+        }
+
+        public static bool HasApiKey()
+        {
+            return LoadApiKey().Length > 0;
+        }
+
+        public static string LoadApiKey()
+        {
+            try
+            {
+                string path = GetApiKeyPath();
+                if (!File.Exists(path))
+                    return "";
+
+                byte[] protectedBytes = Convert.FromBase64String(File.ReadAllText(path).Trim());
+                byte[] bytes = ProtectedData.Unprotect(protectedBytes, null, DataProtectionScope.CurrentUser);
+                return Encoding.UTF8.GetString(bytes);
+            }
+            catch
+            {
+                return "";
+            }
+        }
+
+        public static void SaveApiKey(string apiKey)
+        {
+            string path = GetApiKeyPath();
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            byte[] bytes = Encoding.UTF8.GetBytes(apiKey);
+            byte[] protectedBytes = ProtectedData.Protect(bytes, null, DataProtectionScope.CurrentUser);
+            File.WriteAllText(path, Convert.ToBase64String(protectedBytes));
+        }
+
+        public static void ClearApiKey()
+        {
+            try
+            {
+                string path = GetApiKeyPath();
+                if (File.Exists(path))
+                    File.Delete(path);
+            }
+            catch
+            {
+            }
+        }
+
+        private static string NormalizeLanguage(string language)
+        {
+            string value = (language ?? "").Trim().ToLowerInvariant();
+            string[] supported = new[] { "en", "ko", "ja", "bg", "cs", "da", "el", "es", "et", "fi", "hu", "it", "nl", "pl", "pt", "ro", "ar", "de", "fr", "hi", "id", "ru", "vi" };
+            foreach (string item in supported)
+            {
+                if (value == item)
+                    return value;
+            }
+
+            return "ko";
+        }
+
+        private static string GetSettingsPath()
+        {
+            return Path.Combine(GetSettingsDirectory(), "voice.ini");
+        }
+
+        private static string GetApiKeyPath()
+        {
+            return Path.Combine(GetSettingsDirectory(), "supertone.key");
+        }
+
+        private static string GetSettingsDirectory()
+        {
+            string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            return Path.Combine(appData, "HanEnCursorIndicator");
+        }
+    }
+
+    internal sealed class VoiceRequestOptions
+    {
+        public string ApiKey;
+        public string VoiceId;
+        public string Text;
+        public string Language;
+        public string Model;
+        public string Style;
+        public int SpeedPercent;
+    }
+
+    internal static class VoiceTextSanitizer
+    {
+        private static readonly char[] SentenceBreaks = new[] { '.', '?', '!' };
+
+        public static string Sanitize(string rawText, int maxLength)
+        {
+            if (string.IsNullOrEmpty(rawText))
+                return "";
+
+            int limit = VoiceSettings.ClampMaxTextLength(maxLength);
+            StringBuilder builder = new StringBuilder();
+            bool lastWasSpace = true;
+            bool lastWasPunctuation = false;
+
+            foreach (char c in rawText)
+            {
+                if (IsAllowedTextCharacter(c))
+                {
+                    builder.Append(c);
+                    lastWasSpace = false;
+                    lastWasPunctuation = false;
+                    continue;
+                }
+
+                char punctuation;
+                if (TryNormalizePunctuation(c, out punctuation))
+                {
+                    TrimTrailingSpace(builder);
+                    if (builder.Length > 0)
+                    {
+                        if (!lastWasPunctuation)
+                            builder.Append(punctuation);
+                        builder.Append(' ');
+                    }
+
+                    lastWasSpace = true;
+                    lastWasPunctuation = true;
+                    continue;
+                }
+
+                if (!lastWasSpace && builder.Length > 0)
+                {
+                    builder.Append(' ');
+                    lastWasSpace = true;
+                }
+            }
+
+            string text = builder.ToString().Trim();
+            if (!ContainsReadableCharacter(text))
+                return "";
+
+            return TrimToLength(text, limit);
+        }
+
+        private static bool IsAllowedTextCharacter(char c)
+        {
+            if (IsHangulJamo(c))
+                return false;
+
+            if (char.IsLetterOrDigit(c))
+                return true;
+
+            return false;
+        }
+
+        private static bool ContainsReadableCharacter(string text)
+        {
+            foreach (char c in text)
+            {
+                if (IsAllowedTextCharacter(c))
+                    return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryNormalizePunctuation(char c, out char punctuation)
+        {
+            if (c == '.' || c == '?' || c == '!' || c == ',')
+            {
+                punctuation = c;
+                return true;
+            }
+
+            if (c == '\u3002')
+            {
+                punctuation = '.';
+                return true;
+            }
+
+            if (c == '\uFF1F')
+            {
+                punctuation = '?';
+                return true;
+            }
+
+            if (c == '\uFF01')
+            {
+                punctuation = '!';
+                return true;
+            }
+
+            if (c == '\u3001' || c == '\uFF0C')
+            {
+                punctuation = ',';
+                return true;
+            }
+
+            punctuation = '\0';
+            return false;
+        }
+
+        private static bool IsHangulJamo(char c)
+        {
+            return (c >= '\u3130' && c <= '\u318F') || (c >= '\u1100' && c <= '\u11FF');
+        }
+
+        private static void TrimTrailingSpace(StringBuilder builder)
+        {
+            while (builder.Length > 0 && builder[builder.Length - 1] == ' ')
+                builder.Length--;
+        }
+
+        private static string TrimToLength(string text, int limit)
+        {
+            if (text.Length <= limit)
+                return text;
+
+            int sentenceCut = text.LastIndexOfAny(SentenceBreaks, limit - 1);
+            if (sentenceCut > Math.Max(12, limit / 2))
+                return text.Substring(0, sentenceCut + 1).Trim();
+
+            int spaceCut = text.LastIndexOf(' ', limit - 1);
+            if (spaceCut > Math.Max(12, limit / 2))
+                return text.Substring(0, spaceCut).Trim();
+
+            return text.Substring(0, limit).Trim();
+        }
+    }
+
+    internal static class ClipboardSelectionReader
+    {
+        public static string TryCopySelectionText()
+        {
+            IDataObject previousData = null;
+            bool hadPreviousData = false;
+            try
+            {
+                previousData = Clipboard.GetDataObject();
+                hadPreviousData = previousData != null;
+            }
+            catch
+            {
+            }
+
+            try
+            {
+                TryClearClipboard();
+                SendKeys.SendWait("^c");
+                string copied = ReadTextWithRetry();
+                return copied ?? "";
+            }
+            catch
+            {
+                return "";
+            }
+            finally
+            {
+                RestoreClipboard(previousData, hadPreviousData);
+            }
+        }
+
+        private static string ReadTextWithRetry()
+        {
+            for (int i = 0; i < 8; i++)
+            {
+                Thread.Sleep(35);
+                try
+                {
+                    if (Clipboard.ContainsText())
+                        return Clipboard.GetText();
+                }
+                catch
+                {
+                }
+            }
+
+            return "";
+        }
+
+        private static void TryClearClipboard()
+        {
+            try
+            {
+                Clipboard.Clear();
+            }
+            catch
+            {
+            }
+        }
+
+        private static void RestoreClipboard(IDataObject previousData, bool hadPreviousData)
+        {
+            try
+            {
+                if (hadPreviousData && previousData != null)
+                    Clipboard.SetDataObject(previousData, true);
+                else
+                    Clipboard.Clear();
+            }
+            catch
+            {
+            }
+        }
+    }
+
+    internal static class SupertoneTtsClient
+    {
+        private const string EndpointBase = "https://supertoneapi.com/v1/text-to-speech/";
+
+        public static string CreateSpeechFile(VoiceRequestOptions request)
+        {
+            ServicePointManager.SecurityProtocol |= (SecurityProtocolType)3072;
+
+            string url = EndpointBase + Uri.EscapeDataString(request.VoiceId);
+            byte[] body = Encoding.UTF8.GetBytes(BuildRequestJson(request));
+
+            HttpWebRequest webRequest = (HttpWebRequest)WebRequest.Create(url);
+            webRequest.Method = "POST";
+            webRequest.ContentType = "application/json; charset=utf-8";
+            webRequest.Accept = "audio/wav";
+            webRequest.Headers["x-sup-api-key"] = request.ApiKey;
+            webRequest.Timeout = 30000;
+            webRequest.ReadWriteTimeout = 30000;
+            webRequest.ContentLength = body.Length;
+
+            using (Stream requestStream = webRequest.GetRequestStream())
+            {
+                requestStream.Write(body, 0, body.Length);
+            }
+
+            try
+            {
+                using (HttpWebResponse response = (HttpWebResponse)webRequest.GetResponse())
+                using (Stream responseStream = response.GetResponseStream())
+                {
+                    string path = CreateTempAudioPath();
+                    using (FileStream fileStream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.Read))
+                    {
+                        CopyStream(responseStream, fileStream);
+                    }
+
+                    return path;
+                }
+            }
+            catch (WebException ex)
+            {
+                throw new InvalidOperationException(ReadWebException(ex));
+            }
+        }
+
+        private static string BuildRequestJson(VoiceRequestOptions request)
+        {
+            StringBuilder builder = new StringBuilder();
+            builder.Append('{');
+            AppendJsonField(builder, "text", request.Text, true);
+            AppendJsonField(builder, "language", request.Language, true);
+
+            if (!string.IsNullOrEmpty(request.Style))
+                AppendJsonField(builder, "style", request.Style, true);
+
+            if (!string.IsNullOrEmpty(request.Model))
+                AppendJsonField(builder, "model", request.Model, true);
+
+            AppendJsonField(builder, "output_format", "wav", true);
+
+            double speed = request.SpeedPercent / 100.0d;
+            builder.Append("\"voice_settings\":{\"speed\":");
+            builder.Append(speed.ToString("0.###", CultureInfo.InvariantCulture));
+            builder.Append("},\"include_phonemes\":false}");
+            return builder.ToString();
+        }
+
+        private static void AppendJsonField(StringBuilder builder, string name, string value, bool appendComma)
+        {
+            builder.Append('"');
+            builder.Append(name);
+            builder.Append("\":\"");
+            builder.Append(EscapeJson(value ?? ""));
+            builder.Append('"');
+            if (appendComma)
+                builder.Append(',');
+        }
+
+        private static string EscapeJson(string value)
+        {
+            StringBuilder builder = new StringBuilder();
+            foreach (char c in value)
+            {
+                if (c == '\\' || c == '"')
+                {
+                    builder.Append('\\');
+                    builder.Append(c);
+                }
+                else if (c == '\r')
+                {
+                    builder.Append("\\r");
+                }
+                else if (c == '\n')
+                {
+                    builder.Append("\\n");
+                }
+                else if (c == '\t')
+                {
+                    builder.Append("\\t");
+                }
+                else if (char.IsControl(c))
+                {
+                    builder.Append("\\u");
+                    builder.Append(((int)c).ToString("x4", CultureInfo.InvariantCulture));
+                }
+                else
+                {
+                    builder.Append(c);
+                }
+            }
+
+            return builder.ToString();
+        }
+
+        private static string CreateTempAudioPath()
+        {
+            string directory = Path.Combine(Path.GetTempPath(), "HanEnCursorIndicator");
+            Directory.CreateDirectory(directory);
+            return Path.Combine(directory, "supertone-" + DateTime.UtcNow.Ticks.ToString(CultureInfo.InvariantCulture) + ".wav");
+        }
+
+        private static void CopyStream(Stream input, Stream output)
+        {
+            byte[] buffer = new byte[81920];
+            int read;
+            while ((read = input.Read(buffer, 0, buffer.Length)) > 0)
+                output.Write(buffer, 0, read);
+        }
+
+        private static string ReadWebException(WebException ex)
+        {
+            HttpWebResponse response = ex.Response as HttpWebResponse;
+            string status = response == null ? ex.Message : ((int)response.StatusCode).ToString(CultureInfo.InvariantCulture) + " " + response.StatusDescription;
+            string detail = "";
+
+            try
+            {
+                if (response != null)
+                {
+                    using (Stream stream = response.GetResponseStream())
+                    using (StreamReader reader = new StreamReader(stream))
+                    {
+                        detail = reader.ReadToEnd();
+                    }
+                }
+            }
+            catch
+            {
+            }
+
+            if (detail.Length > 180)
+                detail = detail.Substring(0, 180);
+
+            return string.IsNullOrEmpty(detail) ? status : status + " / " + detail;
+        }
+    }
+
+    internal static class VoiceAudioPlayer
+    {
+        public static void PlayWavAndDelete(string path)
+        {
+            try
+            {
+                using (System.Media.SoundPlayer player = new System.Media.SoundPlayer(path))
+                {
+                    player.Load();
+                    player.PlaySync();
+                }
+            }
+            finally
+            {
+                try
+                {
+                    if (File.Exists(path))
+                        File.Delete(path);
+                }
+                catch
+                {
+                }
+            }
+        }
+    }
+
+    internal sealed class SelectionDragWatcher : IDisposable
+    {
+        private const int DragThreshold = 12;
+        private readonly SynchronizationContext context;
+        private readonly Action onDragCompleted;
+        private NativeMethods.HookProc hookProc;
+        private IntPtr hookHandle = IntPtr.Zero;
+        private Point mouseDownPoint;
+        private DateTime mouseDownUtc = DateTime.MinValue;
+
+        public SelectionDragWatcher(SynchronizationContext context, Action onDragCompleted)
+        {
+            this.context = context;
+            this.onDragCompleted = onDragCompleted;
+        }
+
+        public void Start()
+        {
+            if (hookHandle != IntPtr.Zero)
+                return;
+
+            hookProc = HookCallback;
+            hookHandle = NativeMethods.SetWindowsHookEx(NativeMethods.WH_MOUSE_LL, hookProc, NativeMethods.GetModuleHandle(null), 0);
+        }
+
+        public void Stop()
+        {
+            if (hookHandle == IntPtr.Zero)
+                return;
+
+            NativeMethods.UnhookWindowsHookEx(hookHandle);
+            hookHandle = IntPtr.Zero;
+        }
+
+        public void Dispose()
+        {
+            Stop();
+        }
+
+        private IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
+        {
+            if (nCode >= 0)
+            {
+                int message = wParam.ToInt32();
+                NativeMethods.MouseHookStruct info = (NativeMethods.MouseHookStruct)Marshal.PtrToStructure(lParam, typeof(NativeMethods.MouseHookStruct));
+
+                if (message == NativeMethods.WM_LBUTTONDOWN)
+                {
+                    mouseDownPoint = new Point(info.pt.X, info.pt.Y);
+                    mouseDownUtc = DateTime.UtcNow;
+                }
+                else if (message == NativeMethods.WM_LBUTTONUP)
+                {
+                    Point upPoint = new Point(info.pt.X, info.pt.Y);
+                    double distance = Math.Sqrt(Math.Pow(upPoint.X - mouseDownPoint.X, 2) + Math.Pow(upPoint.Y - mouseDownPoint.Y, 2));
+                    double elapsed = (DateTime.UtcNow - mouseDownUtc).TotalMilliseconds;
+                    if (distance >= DragThreshold && elapsed >= 80 && elapsed <= 12000)
+                        RaiseDragCompleted();
+                }
+            }
+
+            return NativeMethods.CallNextHookEx(hookHandle, nCode, wParam, lParam);
+        }
+
+        private void RaiseDragCompleted()
+        {
+            if (onDragCompleted == null)
+                return;
+
+            if (context != null)
+                context.Post(delegate { onDragCompleted(); }, null);
+            else
+                onDragCompleted();
+        }
     }
 
     internal sealed class AppSettings
@@ -3007,9 +4152,31 @@ namespace CursorImeIndicator
         public const int WS_EX_TOOLWINDOW = 0x00000080;
         public const int WS_EX_LAYERED = 0x00080000;
         public const int WS_EX_NOACTIVATE = 0x08000000;
+        public const int WH_MOUSE_LL = 14;
+        public const int WM_LBUTTONDOWN = 0x0201;
+        public const int WM_LBUTTONUP = 0x0202;
         public const uint SWP_NOACTIVATE = 0x0010;
         public const uint SWP_SHOWWINDOW = 0x0040;
         public static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
+
+        public delegate IntPtr HookProc(int nCode, IntPtr wParam, IntPtr lParam);
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct HookPoint
+        {
+            public int X;
+            public int Y;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct MouseHookStruct
+        {
+            public HookPoint pt;
+            public int mouseData;
+            public int flags;
+            public int time;
+            public IntPtr dwExtraInfo;
+        }
 
         [StructLayout(LayoutKind.Sequential)]
         public struct Rect
@@ -3063,6 +4230,19 @@ namespace CursorImeIndicator
 
         [DllImport("user32.dll")]
         public static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+
+        [DllImport("user32.dll")]
+        public static extern IntPtr SetWindowsHookEx(int idHook, HookProc lpfn, IntPtr hMod, uint dwThreadId);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool UnhookWindowsHookEx(IntPtr hhk);
+
+        [DllImport("user32.dll")]
+        public static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Auto)]
+        public static extern IntPtr GetModuleHandle(string lpModuleName);
 
         [DllImport("imm32.dll")]
         public static extern IntPtr ImmGetContext(IntPtr hWnd);
