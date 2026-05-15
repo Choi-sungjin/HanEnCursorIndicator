@@ -1057,9 +1057,27 @@ namespace CursorImeIndicator
 
             if (mascotImage)
             {
-                Color tint = settings.GetMascotColor(indicatorText);
-                Bitmap tinted = tintedImageCache.Get(image, tint, settings.GetFaceCenter(currentPose));
-                graphics.DrawImage(tinted, rect);
+                if (ImageAnimator.CanAnimate(image))
+                {
+                    if (settings.UseLanguageColors)
+                    {
+                        Color tint = settings.GetMascotColor(indicatorText);
+                        using (Bitmap tinted = MascotColorizer.CreateTintedBitmap(image, tint, settings.GetFaceCenter(currentPose)))
+                        {
+                            graphics.DrawImage(tinted, rect);
+                        }
+                    }
+                    else
+                    {
+                        graphics.DrawImage(image, rect);
+                    }
+                }
+                else
+                {
+                    Color tint = settings.GetMascotColor(indicatorText);
+                    Bitmap tinted = tintedImageCache.Get(image, tint, settings.GetFaceCenter(currentPose));
+                    graphics.DrawImage(tinted, rect);
+                }
             }
             else
             {
