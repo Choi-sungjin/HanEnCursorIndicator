@@ -36,9 +36,9 @@ The default image pack uses three shared pose files:
 
 | Pose | File | Behavior |
 | --- | --- | --- |
-| Idle | `dist/images/idle.png` | Normal standing pose |
+| Idle | `dist/images/idle.png` | Shown when the mouse cursor is still |
 | Point | `dist/images/point.png` | Shown for 1 second after input mode changes |
-| Cheer | `dist/images/cheer.png` | Shown periodically |
+| Cheer | `dist/images/cheer.png` | Shown while the mouse cursor is moving |
 
 The app draws `한`, `en`, or `EN` on the mascot face at runtime, so the basic pack only needs three pose images.
 
@@ -180,8 +180,8 @@ Supported model names in the settings menu follow the Supertone API docs: `sona_
 
 - Input-mode changes use a subtle pop animation.
 - `point.png` appears for 1 second after the language state changes.
-- `idle.png` returns after the point animation.
-- `cheer.png` appears periodically.
+- `idle.png` appears while the mouse cursor is still.
+- `cheer.png` appears while the mouse cursor is moving.
 - State-specific files such as `ko-point.png` or `upper-cheer.png` override the shared pose image.
 - Custom animated GIF poses keep their GIF animation.
 - If no custom image is found, the app falls back to the default text badge.

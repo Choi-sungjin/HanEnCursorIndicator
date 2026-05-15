@@ -339,6 +339,7 @@ namespace CursorImeIndicator
 
         private void OnTimerTick(object sender, EventArgs e)
         {
+            Point cursor = Cursor.Position;
             string text = ImeStateReader.GetIndicatorText();
             stateItem.Text = TextResources.CurrentStatePrefix + text;
 
@@ -349,12 +350,11 @@ namespace CursorImeIndicator
                 ReplaceTrayIcon(text);
             }
 
-            indicatorForm.TickAnimations();
+            indicatorForm.TickAnimations(cursor);
 
             if (!enabled)
                 return;
 
-            Point cursor = Cursor.Position;
             Rectangle area = Screen.FromPoint(cursor).WorkingArea;
             int x = cursor.X + 8;
             int y = cursor.Y - (indicatorForm.Height / 2) + 6;
@@ -795,8 +795,7 @@ namespace CursorImeIndicator
     internal sealed class IndicatorForm : Form
     {
         private const int PointMilliseconds = 1000;
-        private const int CheerCycleMilliseconds = 9000;
-        private const int CheerDurationMilliseconds = 1200;
+        private const int CursorMovingMilliseconds = 180;
         private static readonly Color TransparentBackColor = Color.FromArgb(255, 1, 2, 3);
 
         private readonly IndicatorAssets assets;
@@ -806,8 +805,10 @@ namespace CursorImeIndicator
         private string indicatorText = Labels.Korean;
         private int sizePercent;
         private IndicatorPose currentPose = IndicatorPose.Idle;
-        private DateTime startedAtUtc = DateTime.UtcNow;
         private DateTime stateChangedAtUtc = DateTime.UtcNow;
+        private DateTime lastCursorMoveUtc = DateTime.MinValue;
+        private Point lastCursorPosition;
+        private bool hasCursorPosition;
 
         public IndicatorForm(IndicatorAssets assets, AppSettings settings)
         {
@@ -884,8 +885,10 @@ namespace CursorImeIndicator
             Invalidate();
         }
 
-        public void TickAnimations()
+        public void TickAnimations(Point cursorPosition)
         {
+            TrackCursorMovement(cursorPosition);
+
             IndicatorPose nextPose = CalculatePose();
             if (nextPose != currentPose)
             {
@@ -976,16 +979,31 @@ namespace CursorImeIndicator
 
         private IndicatorPose CalculatePose()
         {
-            double sinceChange = (DateTime.UtcNow - stateChangedAtUtc).TotalMilliseconds;
+            DateTime now = DateTime.UtcNow;
+            double sinceChange = (now - stateChangedAtUtc).TotalMilliseconds;
             if (sinceChange < PointMilliseconds && assets.HasPoseForLabel(indicatorText, IndicatorPose.Point))
                 return IndicatorPose.Point;
 
-            double sinceStart = (DateTime.UtcNow - startedAtUtc).TotalMilliseconds;
-            double cycle = sinceStart % CheerCycleMilliseconds;
-            if (sinceStart > 3000 && cycle < CheerDurationMilliseconds && assets.HasPoseForLabel(indicatorText, IndicatorPose.Cheer))
+            if ((now - lastCursorMoveUtc).TotalMilliseconds < CursorMovingMilliseconds && assets.HasPoseForLabel(indicatorText, IndicatorPose.Cheer))
                 return IndicatorPose.Cheer;
 
             return IndicatorPose.Idle;
+        }
+
+        private void TrackCursorMovement(Point cursorPosition)
+        {
+            if (!hasCursorPosition)
+            {
+                lastCursorPosition = cursorPosition;
+                hasCursorPosition = true;
+                return;
+            }
+
+            if (cursorPosition == lastCursorPosition)
+                return;
+
+            lastCursorPosition = cursorPosition;
+            lastCursorMoveUtc = DateTime.UtcNow;
         }
 
         private IndicatorImage GetCurrentImage(out bool mascotImage)
