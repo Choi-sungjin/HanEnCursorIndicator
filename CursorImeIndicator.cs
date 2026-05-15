@@ -165,6 +165,15 @@ namespace CursorImeIndicator
         public const string KoreanColor = "\uD55C\uAE00 \uC0C9\uC0C1 \uC120\uD0DD";
         public const string EnglishLowerColor = "\uC601\uC5B4 \uC18C\uBB38\uC790 \uC0C9\uC0C1 \uC120\uD0DD";
         public const string EnglishUpperColor = "\uC601\uC5B4 \uB300\uBB38\uC790 \uC0C9\uC0C1 \uC120\uD0DD";
+        public const string LabelColorMenu = "\uAE00\uC528 \uC0C9\uC0C1";
+        public const string KoreanLabelColor = "\uD55C\uAE00 \uAE00\uC528 \uC0C9\uC0C1";
+        public const string EnglishLowerLabelColor = "\uC601\uC5B4 \uC18C\uBB38\uC790 \uAE00\uC528 \uC0C9\uC0C1";
+        public const string EnglishUpperLabelColor = "\uC601\uC5B4 \uB300\uBB38\uC790 \uAE00\uC528 \uC0C9\uC0C1";
+        public const string UseCutoutLine = "\uBC30\uACBD \uB77C\uC778\uC73C\uB85C \uB204\uB07C \uBCF4\uC815";
+        public const string CutoutLineSelection = "\uBC30\uACBD \uB77C\uC778 \uC120\uD0DD";
+        public const string CutoutLineHint = "\uBC30\uACBD\uC73C\uB85C \uC9C0\uC6B8 \uC601\uC5ED\uC5D0 \uC120\uC744 \uADF8\uB9B0 \uB4A4 OK\uB97C \uB204\uB974\uC138\uC694.";
+        public const string Undo = "\uB418\uB3CC\uB9AC\uAE30";
+        public const string Clear = "\uCD08\uAE30\uD654";
         public const string SizeGain = "\uD06C\uAE30 \uAC8C\uC778";
         public const string FaceCenter = "\uAE00\uC790 \uC704\uCE58";
         public const string State = "\uC0C1\uD0DC";
@@ -319,6 +328,13 @@ namespace CursorImeIndicator
             menu.DropDownItems.Add(new ToolStripMenuItem(TextResources.KoreanColor, null, OnChooseKoreanColor));
             menu.DropDownItems.Add(new ToolStripMenuItem(TextResources.EnglishLowerColor, null, OnChooseEnglishLowerColor));
             menu.DropDownItems.Add(new ToolStripMenuItem(TextResources.EnglishUpperColor, null, OnChooseEnglishUpperColor));
+            menu.DropDownItems.Add(new ToolStripSeparator());
+
+            ToolStripMenuItem labelColorMenu = new ToolStripMenuItem(TextResources.LabelColorMenu);
+            labelColorMenu.DropDownItems.Add(new ToolStripMenuItem(TextResources.KoreanLabelColor, null, OnChooseKoreanLabelColor));
+            labelColorMenu.DropDownItems.Add(new ToolStripMenuItem(TextResources.EnglishLowerLabelColor, null, OnChooseEnglishLowerLabelColor));
+            labelColorMenu.DropDownItems.Add(new ToolStripMenuItem(TextResources.EnglishUpperLabelColor, null, OnChooseEnglishUpperLabelColor));
+            menu.DropDownItems.Add(labelColorMenu);
             return menu;
         }
 
@@ -420,7 +436,19 @@ namespace CursorImeIndicator
                     try
                     {
                         string outputPath = BackgroundRemover.GetOutputPath(path);
-                        BackgroundRemover.SaveTransparentCopy(path, outputPath, options.ResizeEnabled ? options.MaxSize : 0);
+                        List<CutoutLine> backgroundLines = new List<CutoutLine>();
+                        if (options.UseBackgroundLine)
+                        {
+                            using (CutoutLineSelectionForm lineForm = new CutoutLineSelectionForm(path))
+                            {
+                                if (lineForm.ShowDialog() != DialogResult.OK)
+                                    continue;
+
+                                backgroundLines = lineForm.Lines;
+                            }
+                        }
+
+                        BackgroundRemover.SaveTransparentCopy(path, outputPath, options.ResizeEnabled ? options.MaxSize : 0, backgroundLines);
                         saved++;
                     }
                     catch
@@ -695,6 +723,21 @@ namespace CursorImeIndicator
         private void OnChooseEnglishUpperColor(object sender, EventArgs e)
         {
             ChooseMascotColor(settings.EnglishUpperMascotColor, delegate(Color color) { settings.EnglishUpperMascotColor = color; });
+        }
+
+        private void OnChooseKoreanLabelColor(object sender, EventArgs e)
+        {
+            ChooseMascotColor(settings.KoreanLabelColor, delegate(Color color) { settings.KoreanLabelColor = color; });
+        }
+
+        private void OnChooseEnglishLowerLabelColor(object sender, EventArgs e)
+        {
+            ChooseMascotColor(settings.EnglishLowerLabelColor, delegate(Color color) { settings.EnglishLowerLabelColor = color; });
+        }
+
+        private void OnChooseEnglishUpperLabelColor(object sender, EventArgs e)
+        {
+            ChooseMascotColor(settings.EnglishUpperLabelColor, delegate(Color color) { settings.EnglishUpperLabelColor = color; });
         }
 
         private void ChooseMascotColor(Color initialColor, Action<Color> apply)
@@ -1123,7 +1166,7 @@ namespace CursorImeIndicator
 
             float fontSize = Math.Max(7.0f, imageRect.Height * (text == Labels.Korean ? 0.155f : 0.14f));
             using (Font font = new Font("Malgun Gothic", fontSize, FontStyle.Bold, GraphicsUnit.Pixel))
-            using (SolidBrush fill = new SolidBrush(GetLabelColor(text)))
+            using (SolidBrush fill = new SolidBrush(settings.GetLabelColor(text)))
             using (SolidBrush shadow = new SolidBrush(Color.FromArgb(110, Color.White)))
             using (StringFormat format = new StringFormat())
             {
@@ -1133,15 +1176,6 @@ namespace CursorImeIndicator
                 graphics.DrawString(text, font, shadow, shadowRect, format);
                 graphics.DrawString(text, font, fill, faceRect, format);
             }
-        }
-
-        private static Color GetLabelColor(string text)
-        {
-            if (text == Labels.Korean)
-                return Color.FromArgb(24, 128, 91);
-            if (text == Labels.EnglishUpper)
-                return Color.FromArgb(21, 70, 160);
-            return Color.FromArgb(38, 78, 140);
         }
 
         private void DrawTextIndicator(Graphics graphics, float popScale)
@@ -1604,6 +1638,19 @@ namespace CursorImeIndicator
         }
     }
 
+    internal sealed class CutoutLine
+    {
+        public CutoutLine(PointF start, PointF end)
+        {
+            Start = start;
+            End = end;
+        }
+
+        public PointF Start { get; private set; }
+
+        public PointF End { get; private set; }
+    }
+
     internal static class BackgroundRemover
     {
         public static string GetOutputPath(string inputPath)
@@ -1629,9 +1676,14 @@ namespace CursorImeIndicator
 
         public static void SaveTransparentCopy(string inputPath, string outputPath, int maxSize)
         {
+            SaveTransparentCopy(inputPath, outputPath, maxSize, null);
+        }
+
+        public static void SaveTransparentCopy(string inputPath, string outputPath, int maxSize, IEnumerable<CutoutLine> backgroundLines)
+        {
             using (Bitmap bitmap = LoadArgbBitmap(inputPath))
             {
-                RemoveEdgeBackground(bitmap);
+                RemoveEdgeBackground(bitmap, backgroundLines);
                 if (maxSize > 0)
                 {
                     using (Bitmap resized = CreateResizedCutout(bitmap, maxSize))
@@ -1659,8 +1711,9 @@ namespace CursorImeIndicator
             }
         }
 
-        private static void RemoveEdgeBackground(Bitmap bitmap)
+        private static void RemoveEdgeBackground(Bitmap bitmap, IEnumerable<CutoutLine> backgroundLines)
         {
+            List<CutoutLine> lines = NormalizeCutoutLines(backgroundLines);
             int width = bitmap.Width;
             int height = bitmap.Height;
             Rectangle rect = new Rectangle(0, 0, width, height);
@@ -1672,9 +1725,13 @@ namespace CursorImeIndicator
                 byte[] bytes = new byte[Math.Abs(stride) * height];
                 Marshal.Copy(data.Scan0, bytes, 0, bytes.Length);
 
-                bool[] background = FindConnectedBackground(bytes, width, height, stride, true);
+                bool[] background = FindConnectedBackground(bytes, width, height, stride, true, lines);
                 if (RemovesTooMuch(bytes, background, width, height, stride))
-                    background = FindConnectedBackground(bytes, width, height, stride, false);
+                {
+                    background = FindConnectedBackground(bytes, width, height, stride, true, null);
+                    if (RemovesTooMuch(bytes, background, width, height, stride))
+                        background = FindConnectedBackground(bytes, width, height, stride, false, null);
+                }
 
                 ApplySubjectCropFallback(bytes, background, width, height, stride);
 
@@ -1857,12 +1914,12 @@ namespace CursorImeIndicator
             return opaque > 0 && removed > opaque * 0.88d;
         }
 
-        private static bool[] FindConnectedBackground(byte[] bytes, int width, int height, int stride, bool useEdgeColorModel)
+        private static bool[] FindConnectedBackground(byte[] bytes, int width, int height, int stride, bool useEdgeColorModel, IList<CutoutLine> backgroundLines)
         {
             bool[] background = new bool[width * height];
             int[] queue = new int[width * height];
             BackgroundColorModel model = useEdgeColorModel
-                ? BackgroundColorModel.Create(bytes, width, height, stride)
+                ? BackgroundColorModel.Create(bytes, width, height, stride, backgroundLines)
                 : BackgroundColorModel.Empty;
             int head = 0;
             int tail = 0;
@@ -1883,6 +1940,8 @@ namespace CursorImeIndicator
                 AddSeed(bytes, background, queue, ref tail, width, height, stride, model, 0, y);
                 AddSeed(bytes, background, queue, ref tail, width, height, stride, model, width - 1, y);
             }
+
+            AddLineSeeds(bytes, background, queue, ref tail, width, height, stride, backgroundLines);
 
             while (head < tail)
             {
@@ -2128,6 +2187,53 @@ namespace CursorImeIndicator
             tail++;
         }
 
+        private static void AddLineSeeds(byte[] bytes, bool[] background, int[] queue, ref int tail, int width, int height, int stride, IList<CutoutLine> backgroundLines)
+        {
+            if (backgroundLines == null || backgroundLines.Count == 0)
+                return;
+
+            foreach (CutoutLine line in backgroundLines)
+            {
+                int x1 = RatioToPixel(line.Start.X, width);
+                int y1 = RatioToPixel(line.Start.Y, height);
+                int x2 = RatioToPixel(line.End.X, width);
+                int y2 = RatioToPixel(line.End.Y, height);
+                int steps = Math.Max(Math.Abs(x2 - x1), Math.Abs(y2 - y1));
+                if (steps < 1)
+                    steps = 1;
+
+                for (int i = 0; i <= steps; i++)
+                {
+                    double t = i / (double)steps;
+                    int x = (int)Math.Round(x1 + ((x2 - x1) * t));
+                    int y = (int)Math.Round(y1 + ((y2 - y1) * t));
+                    AddManualSeed(bytes, background, queue, ref tail, width, height, stride, x, y);
+                    AddManualSeed(bytes, background, queue, ref tail, width, height, stride, x - 1, y);
+                    AddManualSeed(bytes, background, queue, ref tail, width, height, stride, x + 1, y);
+                    AddManualSeed(bytes, background, queue, ref tail, width, height, stride, x, y - 1);
+                    AddManualSeed(bytes, background, queue, ref tail, width, height, stride, x, y + 1);
+                }
+            }
+        }
+
+        private static void AddManualSeed(byte[] bytes, bool[] background, int[] queue, ref int tail, int width, int height, int stride, int x, int y)
+        {
+            if (x < 0 || y < 0 || x >= width || y >= height)
+                return;
+
+            int p = (y * width) + x;
+            if (background[p])
+                return;
+
+            int offset = (y * stride) + (x * 4);
+            if (bytes[offset + 3] < 8)
+                return;
+
+            background[p] = true;
+            queue[tail] = p;
+            tail++;
+        }
+
         private static bool IsBackgroundPixel(byte[] bytes, int offset, BackgroundColorModel model)
         {
             int b = bytes[offset];
@@ -2193,6 +2299,42 @@ namespace CursorImeIndicator
             return average > 220.0d && saturation < 0.20d;
         }
 
+        private static List<CutoutLine> NormalizeCutoutLines(IEnumerable<CutoutLine> backgroundLines)
+        {
+            List<CutoutLine> lines = new List<CutoutLine>();
+            if (backgroundLines == null)
+                return lines;
+
+            foreach (CutoutLine line in backgroundLines)
+            {
+                if (line == null)
+                    continue;
+
+                PointF start = new PointF(ClampRatio(line.Start.X), ClampRatio(line.Start.Y));
+                PointF end = new PointF(ClampRatio(line.End.X), ClampRatio(line.End.Y));
+                if (Math.Abs(start.X - end.X) < 0.001f && Math.Abs(start.Y - end.Y) < 0.001f)
+                    continue;
+
+                lines.Add(new CutoutLine(start, end));
+            }
+
+            return lines;
+        }
+
+        private static float ClampRatio(float value)
+        {
+            if (value < 0.0f)
+                return 0.0f;
+            if (value > 1.0f)
+                return 1.0f;
+            return value;
+        }
+
+        private static int RatioToPixel(float ratio, int size)
+        {
+            return Math.Max(0, Math.Min(size - 1, (int)Math.Round(ClampRatio(ratio) * (size - 1))));
+        }
+
         private sealed class BackgroundColorModel
         {
             public static readonly BackgroundColorModel Empty = new BackgroundColorModel(new List<ColorSample>(), 0.0d);
@@ -2206,9 +2348,10 @@ namespace CursorImeIndicator
                 toleranceSquared = tolerance * tolerance;
             }
 
-            public static BackgroundColorModel Create(byte[] bytes, int width, int height, int stride)
+            public static BackgroundColorModel Create(byte[] bytes, int width, int height, int stride, IList<CutoutLine> backgroundLines)
             {
                 List<ColorSample> edgeSamples = new List<ColorSample>();
+                List<ColorSample> lineSamples = new List<ColorSample>();
                 int step = Math.Max(1, Math.Min(width, height) / 48);
 
                 for (int x = 0; x < width; x += step)
@@ -2226,6 +2369,8 @@ namespace CursorImeIndicator
                 AddSample(edgeSamples, bytes, 0, width - 1, 0, stride);
                 AddSample(edgeSamples, bytes, 0, 0, height - 1, stride);
                 AddSample(edgeSamples, bytes, 0, width - 1, height - 1, stride);
+                AddLineSamples(lineSamples, bytes, width, height, stride, backgroundLines);
+                edgeSamples.AddRange(lineSamples);
 
                 if (edgeSamples.Count == 0)
                     return new BackgroundColorModel(new List<ColorSample>(), 0.0d);
@@ -2258,6 +2403,14 @@ namespace CursorImeIndicator
 
                 List<ColorSample> anchors = new List<ColorSample>();
                 anchors.Add(new ColorSample((int)Math.Round(r), (int)Math.Round(g), (int)Math.Round(b)));
+                foreach (ColorSample sample in lineSamples)
+                {
+                    if (anchors.Count >= 28)
+                        break;
+
+                    anchors.Add(sample);
+                }
+
                 int strideSamples = Math.Max(1, edgeSamples.Count / 24);
                 for (int i = 0; i < edgeSamples.Count && anchors.Count < 28; i += strideSamples)
                     anchors.Add(edgeSamples[i]);
@@ -2294,6 +2447,32 @@ namespace CursorImeIndicator
 
                 samples.Add(new ColorSample(bytes[offset + 2], bytes[offset + 1], bytes[offset]));
             }
+
+            private static void AddLineSamples(List<ColorSample> samples, byte[] bytes, int width, int height, int stride, IList<CutoutLine> backgroundLines)
+            {
+                if (backgroundLines == null || backgroundLines.Count == 0)
+                    return;
+
+                foreach (CutoutLine line in backgroundLines)
+                {
+                    int x1 = RatioToPixel(line.Start.X, width);
+                    int y1 = RatioToPixel(line.Start.Y, height);
+                    int x2 = RatioToPixel(line.End.X, width);
+                    int y2 = RatioToPixel(line.End.Y, height);
+                    int steps = Math.Max(Math.Abs(x2 - x1), Math.Abs(y2 - y1));
+                    if (steps < 1)
+                        steps = 1;
+
+                    int strideStep = Math.Max(1, steps / 40);
+                    for (int i = 0; i <= steps; i += strideStep)
+                    {
+                        double t = i / (double)steps;
+                        int x = (int)Math.Round(x1 + ((x2 - x1) * t));
+                        int y = (int)Math.Round(y1 + ((y2 - y1) * t));
+                        AddSample(samples, bytes, 0, x, y, stride);
+                    }
+                }
+            }
         }
 
         private struct ColorSample
@@ -2316,11 +2495,14 @@ namespace CursorImeIndicator
         public bool ResizeEnabled { get; set; }
 
         public int MaxSize { get; set; }
+
+        public bool UseBackgroundLine { get; set; }
     }
 
     internal sealed class CutoutOptionsForm : Form
     {
         private readonly CheckBox resizeCheckBox;
+        private readonly CheckBox useLineCheckBox;
         private readonly NumericUpDown sizeNumeric;
 
         public CutoutOptionsForm()
@@ -2332,7 +2514,7 @@ namespace CursorImeIndicator
             ShowInTaskbar = false;
             TopMost = true;
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(320, 126);
+            ClientSize = new Size(320, 158);
 
             resizeCheckBox = new CheckBox();
             resizeCheckBox.Text = TextResources.SaveSmallCutout;
@@ -2359,16 +2541,22 @@ namespace CursorImeIndicator
             pxLabel.Location = new Point(216, 48);
             pxLabel.Size = new Size(34, 22);
 
+            useLineCheckBox = new CheckBox();
+            useLineCheckBox.Text = TextResources.UseCutoutLine;
+            useLineCheckBox.Checked = false;
+            useLineCheckBox.Location = new Point(14, 78);
+            useLineCheckBox.Size = new Size(240, 24);
+
             Button okButton = new Button();
             okButton.Text = "OK";
             okButton.DialogResult = DialogResult.OK;
-            okButton.Location = new Point(150, 88);
+            okButton.Location = new Point(150, 120);
             okButton.Size = new Size(72, 26);
 
             Button cancelButton = new Button();
             cancelButton.Text = TextResources.Close;
             cancelButton.DialogResult = DialogResult.Cancel;
-            cancelButton.Location = new Point(230, 88);
+            cancelButton.Location = new Point(230, 120);
             cancelButton.Size = new Size(72, 26);
 
             AcceptButton = okButton;
@@ -2378,6 +2566,7 @@ namespace CursorImeIndicator
             Controls.Add(sizeLabel);
             Controls.Add(sizeNumeric);
             Controls.Add(pxLabel);
+            Controls.Add(useLineCheckBox);
             Controls.Add(okButton);
             Controls.Add(cancelButton);
             OnResizeChanged(this, EventArgs.Empty);
@@ -2390,7 +2579,8 @@ namespace CursorImeIndicator
                 return new CutoutOptions
                 {
                     ResizeEnabled = resizeCheckBox.Checked,
-                    MaxSize = (int)sizeNumeric.Value
+                    MaxSize = (int)sizeNumeric.Value,
+                    UseBackgroundLine = useLineCheckBox.Checked
                 };
             }
         }
@@ -2398,6 +2588,248 @@ namespace CursorImeIndicator
         private void OnResizeChanged(object sender, EventArgs e)
         {
             sizeNumeric.Enabled = resizeCheckBox.Checked;
+        }
+    }
+
+    internal sealed class CutoutLineSelectionForm : Form
+    {
+        private readonly CutoutLinePreview preview;
+
+        public CutoutLineSelectionForm(string imagePath)
+        {
+            Text = TextResources.CutoutLineSelection;
+            FormBorderStyle = FormBorderStyle.FixedToolWindow;
+            MaximizeBox = false;
+            MinimizeBox = false;
+            ShowInTaskbar = false;
+            TopMost = true;
+            StartPosition = FormStartPosition.CenterScreen;
+            ClientSize = new Size(560, 628);
+
+            Label hintLabel = new Label();
+            hintLabel.Text = TextResources.CutoutLineHint;
+            hintLabel.Location = new Point(14, 12);
+            hintLabel.Size = new Size(532, 24);
+
+            preview = new CutoutLinePreview(imagePath);
+            preview.Location = new Point(14, 42);
+            preview.Size = new Size(532, 532);
+
+            Button undoButton = new Button();
+            undoButton.Text = TextResources.Undo;
+            undoButton.Location = new Point(14, 588);
+            undoButton.Size = new Size(82, 28);
+            undoButton.Click += OnUndoClicked;
+
+            Button clearButton = new Button();
+            clearButton.Text = TextResources.Clear;
+            clearButton.Location = new Point(102, 588);
+            clearButton.Size = new Size(82, 28);
+            clearButton.Click += OnClearClicked;
+
+            Button okButton = new Button();
+            okButton.Text = "OK";
+            okButton.DialogResult = DialogResult.OK;
+            okButton.Location = new Point(386, 588);
+            okButton.Size = new Size(76, 28);
+
+            Button cancelButton = new Button();
+            cancelButton.Text = TextResources.Close;
+            cancelButton.DialogResult = DialogResult.Cancel;
+            cancelButton.Location = new Point(470, 588);
+            cancelButton.Size = new Size(76, 28);
+
+            AcceptButton = okButton;
+            CancelButton = cancelButton;
+
+            Controls.Add(hintLabel);
+            Controls.Add(preview);
+            Controls.Add(undoButton);
+            Controls.Add(clearButton);
+            Controls.Add(okButton);
+            Controls.Add(cancelButton);
+        }
+
+        public List<CutoutLine> Lines
+        {
+            get { return preview.GetLines(); }
+        }
+
+        private void OnUndoClicked(object sender, EventArgs e)
+        {
+            preview.Undo();
+        }
+
+        private void OnClearClicked(object sender, EventArgs e)
+        {
+            preview.ClearLines();
+        }
+    }
+
+    internal sealed class CutoutLinePreview : Control
+    {
+        private readonly MemoryStream stream;
+        private readonly Image image;
+        private readonly List<CutoutLine> lines = new List<CutoutLine>();
+        private bool drawing;
+        private PointF startRatio;
+        private PointF currentRatio;
+
+        public CutoutLinePreview(string imagePath)
+        {
+            byte[] bytes = File.ReadAllBytes(imagePath);
+            stream = new MemoryStream(bytes);
+            image = Image.FromStream(stream);
+            DoubleBuffered = true;
+            BackColor = Color.FromArgb(246, 248, 252);
+        }
+
+        public List<CutoutLine> GetLines()
+        {
+            return new List<CutoutLine>(lines);
+        }
+
+        public void Undo()
+        {
+            if (lines.Count == 0)
+                return;
+
+            lines.RemoveAt(lines.Count - 1);
+            Invalidate();
+        }
+
+        public void ClearLines()
+        {
+            lines.Clear();
+            Invalidate();
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            e.Graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            e.Graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
+
+            using (SolidBrush background = new SolidBrush(BackColor))
+            using (Pen border = new Pen(Color.FromArgb(203, 213, 225)))
+            {
+                e.Graphics.FillRectangle(background, ClientRectangle);
+                e.Graphics.DrawRectangle(border, new Rectangle(0, 0, Width - 1, Height - 1));
+            }
+
+            Rectangle imageRect = GetImageRect();
+            e.Graphics.DrawImage(image, imageRect);
+
+            using (Pen shadow = new Pen(Color.FromArgb(150, Color.White), 6))
+            using (Pen pen = new Pen(Color.FromArgb(230, 14, 165, 233), 3))
+            {
+                pen.StartCap = LineCap.Round;
+                pen.EndCap = LineCap.Round;
+                shadow.StartCap = LineCap.Round;
+                shadow.EndCap = LineCap.Round;
+
+                foreach (CutoutLine line in lines)
+                    DrawLine(e.Graphics, imageRect, line.Start, line.End, shadow, pen);
+
+                if (drawing)
+                    DrawLine(e.Graphics, imageRect, startRatio, currentRatio, shadow, pen);
+            }
+        }
+
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            base.OnMouseDown(e);
+            if (e.Button != MouseButtons.Left)
+                return;
+
+            startRatio = PointToRatio(e.Location);
+            currentRatio = startRatio;
+            drawing = true;
+            Capture = true;
+            Invalidate();
+        }
+
+        protected override void OnMouseMove(MouseEventArgs e)
+        {
+            base.OnMouseMove(e);
+            if (!drawing)
+                return;
+
+            currentRatio = PointToRatio(e.Location);
+            Invalidate();
+        }
+
+        protected override void OnMouseUp(MouseEventArgs e)
+        {
+            base.OnMouseUp(e);
+            if (!drawing)
+                return;
+
+            currentRatio = PointToRatio(e.Location);
+            drawing = false;
+            Capture = false;
+
+            if (Math.Abs(startRatio.X - currentRatio.X) > 0.004f || Math.Abs(startRatio.Y - currentRatio.Y) > 0.004f)
+                lines.Add(new CutoutLine(startRatio, currentRatio));
+
+            Invalidate();
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                if (image != null)
+                    image.Dispose();
+                if (stream != null)
+                    stream.Dispose();
+            }
+
+            base.Dispose(disposing);
+        }
+
+        private void DrawLine(Graphics graphics, Rectangle imageRect, PointF start, PointF end, Pen shadow, Pen pen)
+        {
+            Point startPoint = RatioToPoint(imageRect, start);
+            Point endPoint = RatioToPoint(imageRect, end);
+            graphics.DrawLine(shadow, startPoint, endPoint);
+            graphics.DrawLine(pen, startPoint, endPoint);
+        }
+
+        private Rectangle GetImageRect()
+        {
+            int margin = 12;
+            int availableWidth = Math.Max(1, Width - (margin * 2));
+            int availableHeight = Math.Max(1, Height - (margin * 2));
+            float ratio = Math.Min(availableWidth / (float)Math.Max(1, image.Width), availableHeight / (float)Math.Max(1, image.Height));
+            int drawWidth = Math.Max(1, (int)Math.Round(image.Width * ratio));
+            int drawHeight = Math.Max(1, (int)Math.Round(image.Height * ratio));
+            return new Rectangle((Width - drawWidth) / 2, (Height - drawHeight) / 2, drawWidth, drawHeight);
+        }
+
+        private PointF PointToRatio(Point point)
+        {
+            Rectangle rect = GetImageRect();
+            float x = (point.X - rect.Left) / (float)Math.Max(1, rect.Width);
+            float y = (point.Y - rect.Top) / (float)Math.Max(1, rect.Height);
+            return new PointF(ClampRatio(x), ClampRatio(y));
+        }
+
+        private static Point RatioToPoint(Rectangle rect, PointF ratio)
+        {
+            return new Point(
+                rect.Left + (int)Math.Round(rect.Width * ClampRatio(ratio.X)),
+                rect.Top + (int)Math.Round(rect.Height * ClampRatio(ratio.Y)));
+        }
+
+        private static float ClampRatio(float value)
+        {
+            if (value < 0.0f)
+                return 0.0f;
+            if (value > 1.0f)
+                return 1.0f;
+            return value;
         }
     }
 
@@ -3032,7 +3464,7 @@ namespace CursorImeIndicator
             RectangleF faceRect = LabelGeometry.CreateLabelRect(imageRect, center);
 
             using (Font font = new Font("Malgun Gothic", Math.Max(11.0f, imageRect.Height * 0.13f), FontStyle.Bold, GraphicsUnit.Pixel))
-            using (SolidBrush fill = new SolidBrush(GetSampleLabelColor(label)))
+            using (SolidBrush fill = new SolidBrush(settings.GetLabelColor(label)))
             using (SolidBrush shadow = new SolidBrush(Color.FromArgb(130, Color.White)))
             using (StringFormat format = new StringFormat())
             {
@@ -3042,15 +3474,6 @@ namespace CursorImeIndicator
                 graphics.DrawString(label, font, shadow, shadowRect, format);
                 graphics.DrawString(label, font, fill, faceRect, format);
             }
-        }
-
-        private static Color GetSampleLabelColor(string label)
-        {
-            if (label == Labels.Korean)
-                return Color.FromArgb(24, 128, 91);
-            if (label == Labels.EnglishUpper)
-                return Color.FromArgb(21, 70, 160);
-            return Color.FromArgb(38, 78, 140);
         }
     }
 
@@ -3770,6 +4193,9 @@ namespace CursorImeIndicator
         public Color KoreanMascotColor = Color.FromArgb(80, 190, 145);
         public Color EnglishLowerMascotColor = Color.FromArgb(90, 135, 220);
         public Color EnglishUpperMascotColor = Color.FromArgb(120, 100, 220);
+        public Color KoreanLabelColor = Color.FromArgb(24, 128, 91);
+        public Color EnglishLowerLabelColor = Color.FromArgb(38, 78, 140);
+        public Color EnglishUpperLabelColor = Color.FromArgb(21, 70, 160);
         private readonly Dictionary<string, PointF> labelCenters = new Dictionary<string, PointF>(StringComparer.Ordinal);
 
         public static AppSettings Load()
@@ -3845,6 +4271,24 @@ namespace CursorImeIndicator
                     {
                         settings.EnglishUpperMascotColor = ParseColor(valueText, settings.EnglishUpperMascotColor);
                     }
+                    else if (key.Equals("koreanLabelColor", StringComparison.OrdinalIgnoreCase))
+                    {
+                        settings.KoreanLabelColor = ParseColor(valueText, settings.KoreanLabelColor);
+                    }
+                    else if (key.Equals("englishLabelColor", StringComparison.OrdinalIgnoreCase))
+                    {
+                        Color legacyColor = ParseColor(valueText, settings.EnglishLowerLabelColor);
+                        settings.EnglishLowerLabelColor = legacyColor;
+                        settings.EnglishUpperLabelColor = legacyColor;
+                    }
+                    else if (key.Equals("englishLowerLabelColor", StringComparison.OrdinalIgnoreCase))
+                    {
+                        settings.EnglishLowerLabelColor = ParseColor(valueText, settings.EnglishLowerLabelColor);
+                    }
+                    else if (key.Equals("englishUpperLabelColor", StringComparison.OrdinalIgnoreCase))
+                    {
+                        settings.EnglishUpperLabelColor = ParseColor(valueText, settings.EnglishUpperLabelColor);
+                    }
                 }
             }
             catch
@@ -3878,6 +4322,9 @@ namespace CursorImeIndicator
                 lines.Add("koreanMascotColor=" + FormatColor(KoreanMascotColor));
                 lines.Add("englishLowerMascotColor=" + FormatColor(EnglishLowerMascotColor));
                 lines.Add("englishUpperMascotColor=" + FormatColor(EnglishUpperMascotColor));
+                lines.Add("koreanLabelColor=" + FormatColor(KoreanLabelColor));
+                lines.Add("englishLowerLabelColor=" + FormatColor(EnglishLowerLabelColor));
+                lines.Add("englishUpperLabelColor=" + FormatColor(EnglishUpperLabelColor));
                 File.WriteAllLines(path, lines.ToArray());
             }
             catch
@@ -3962,6 +4409,17 @@ namespace CursorImeIndicator
                 return EnglishUpperMascotColor;
 
             return EnglishLowerMascotColor;
+        }
+
+        public Color GetLabelColor(string label)
+        {
+            if (label == Labels.Korean)
+                return KoreanLabelColor;
+
+            if (label == Labels.EnglishUpper)
+                return EnglishUpperLabelColor;
+
+            return EnglishLowerLabelColor;
         }
 
         private static float ClampFloat(float value, float min, float max)

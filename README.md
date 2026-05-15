@@ -122,6 +122,7 @@ Tips:
 - Right-click the tray icon and choose `이미지 폴더 열기` to open the correct folder.
 - After changing files, choose `커스텀 이미지 다시 불러오기`.
 - Choose `이미지 누끼 처리` from the tray menu to select one or more images and save transparent `*-cutout.png` copies. It samples the outer edge color to remove connected backgrounds, falls back to a centered subject mask for complex photos, and the default option shrinks large images to a lightweight 160px app-ready PNG.
+- Turn on `배경 라인으로 누끼 보정` in the cutout options to draw one or more lines over the background area before saving. The line samples are used as extra background seeds for more precise cutouts.
 
 ## Size Control / 크기 조정
 
@@ -159,6 +160,7 @@ Right-click the tray icon and open `미니미 색상`.
 - `한글 색상 선택`: clothing color used when the label is `한`.
 - `영어 소문자 색상 선택`: clothing color used when the label is `en`.
 - `영어 대문자 색상 선택`: clothing color used when the label is `EN`.
+- `글씨 색상`: choose separate face-label colors for `한`, `en`, and `EN`.
 - The face label stays readable while the body/clothing area is recolored.
 
 ## Voice / Supertone TTS
@@ -199,6 +201,7 @@ Supported model names in the settings menu follow the Supertone API docs: `sona_
 - Tray menu size presets and drag slider.
 - Tray menu state + pose label-position drag editor.
 - Tray menu mascot color picker.
+- Tray menu label color picker and background-line cutout refinement.
 - Tray menu Supertone voice settings with encrypted per-PC API key storage.
 
 ## MVP Direction
