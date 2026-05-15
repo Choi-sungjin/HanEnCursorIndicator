@@ -291,8 +291,10 @@ function drawImage(canvas, image, x, y, w, h) {
   }
 }
 
-function drawMascot(canvas, pose, label, x, y, size) {
+function drawMascot(canvas, pose, label, x, y, size, showLabel = true) {
   drawImage(canvas, poses[pose], x, y, size, size);
+  if (!showLabel) return;
+
   const faceCxRatio = pose === "point" ? 0.543 : pose === "cheer" ? 0.505 : 0.5;
   const faceCx = x + size * faceCxRatio;
   const faceCy = y + size * 0.37;
@@ -382,6 +384,16 @@ function drawSizePanel(canvas, percent) {
   drawText(canvas, "DRAG SLIDER", 407, 245, [100, 116, 139], 1);
 }
 
+function drawPackPanel(canvas) {
+  fillRoundRect(canvas, 372, 154, 194, 120, 8, [255, 255, 255]);
+  strokeRect(canvas, 372, 154, 194, 120, [203, 213, 225]);
+  drawText(canvas, "3 OR 9 IMAGE PACK", 388, 170, [30, 41, 59], 1);
+  drawText(canvas, "IDLE POINT CHEER", 388, 194, [71, 85, 105], 1);
+  drawText(canvas, "KO-IDLE", 388, 218, [24, 128, 91], 1);
+  drawText(canvas, "EN-IDLE", 388, 238, [38, 78, 140], 1);
+  drawText(canvas, "UPPER-IDLE", 460, 238, [30, 64, 175], 1);
+}
+
 function ease(t) {
   return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
 }
@@ -397,6 +409,8 @@ function makeFrame(frameIndex) {
   let cursorX = 250;
   let cursorY = 151;
   let showSize = false;
+  let showPack = false;
+  let showLabel = true;
   let percent = 100;
 
   if (frameIndex < 9) {
@@ -419,10 +433,11 @@ function makeFrame(frameIndex) {
   } else if (frameIndex < 30) {
     pose = "cheer";
     label = "EN";
-    caption = "CAPS OR SHIFT SHOWS EN";
+    caption = "9 IMAGE PACK FOLLOWS KO EN UPPER";
     mascotX = 304;
     mascotY = 108;
     cursorX = mascotX - 26;
+    showPack = true;
   } else {
     const t = ease((frameIndex - 30) / 5);
     pose = "idle";
@@ -433,13 +448,15 @@ function makeFrame(frameIndex) {
     mascotY = Math.round(120 - (mascotSize - 118) / 2);
     cursorX = mascotX - 20;
     cursorY = mascotY + Math.round(mascotSize / 2) - 6;
-    caption = "DRAG SIZE CONTROL - SAVES PERCENT";
+    caption = "LABEL TOGGLE CAN SHOW IMAGE ONLY";
     showSize = true;
+    showLabel = false;
   }
 
   drawBase(canvas, caption);
-  drawMascot(canvas, pose, label, mascotX, mascotY, mascotSize);
+  drawMascot(canvas, pose, label, mascotX, mascotY, mascotSize, showLabel);
   drawCursor(canvas, cursorX, cursorY);
+  if (showPack) drawPackPanel(canvas);
   if (showSize) drawSizePanel(canvas, percent);
   return quantize(canvas);
 }

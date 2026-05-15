@@ -44,6 +44,103 @@ namespace CursorImeIndicator
         Cheer
     }
 
+    internal static class IndicatorPoseHelper
+    {
+        public static readonly IndicatorPose[] All = new[] { IndicatorPose.Idle, IndicatorPose.Point, IndicatorPose.Cheer };
+
+        public static string GetKey(IndicatorPose pose)
+        {
+            if (pose == IndicatorPose.Point)
+                return "point";
+            if (pose == IndicatorPose.Cheer)
+                return "cheer";
+            return "idle";
+        }
+
+        public static string GetDisplayName(IndicatorPose pose)
+        {
+            if (pose == IndicatorPose.Point)
+                return "Point";
+            if (pose == IndicatorPose.Cheer)
+                return "Cheer";
+            return "Idle";
+        }
+
+        public static bool TryParseKey(string key, out IndicatorPose pose)
+        {
+            if (key.Equals("point", StringComparison.OrdinalIgnoreCase))
+            {
+                pose = IndicatorPose.Point;
+                return true;
+            }
+
+            if (key.Equals("cheer", StringComparison.OrdinalIgnoreCase))
+            {
+                pose = IndicatorPose.Cheer;
+                return true;
+            }
+
+            if (key.Equals("idle", StringComparison.OrdinalIgnoreCase))
+            {
+                pose = IndicatorPose.Idle;
+                return true;
+            }
+
+            pose = IndicatorPose.Idle;
+            return false;
+        }
+    }
+
+    internal static class IndicatorStates
+    {
+        public const string Korean = "ko";
+        public const string EnglishLower = "en";
+        public const string EnglishUpper = "EN";
+
+        public static readonly string[] All = new[] { Korean, EnglishLower, EnglishUpper };
+
+        public static string FromLabel(string label)
+        {
+            if (label == Labels.Korean)
+                return Korean;
+            if (label == Labels.EnglishUpper)
+                return EnglishUpper;
+            return EnglishLower;
+        }
+
+        public static string ToLabel(string stateKey)
+        {
+            if (stateKey == Korean)
+                return Labels.Korean;
+            if (stateKey == EnglishUpper)
+                return Labels.EnglishUpper;
+            return Labels.EnglishLower;
+        }
+
+        public static string GetDisplayName(string stateKey)
+        {
+            if (stateKey == Korean)
+                return "\uD55C\uAE00 (ko)";
+            if (stateKey == EnglishUpper)
+                return "\uC601\uC5B4 \uB300\uBB38\uC790 (EN)";
+            return "\uC601\uC5B4 \uC18C\uBB38\uC790 (en)";
+        }
+
+        public static bool IsValidKey(string stateKey)
+        {
+            return stateKey == Korean || stateKey == EnglishLower || stateKey == EnglishUpper;
+        }
+
+        public static string[] GetFilePrefixes(string stateKey)
+        {
+            if (stateKey == Korean)
+                return new[] { "ko" };
+            if (stateKey == EnglishUpper)
+                return new[] { "EN", "upper", "caps" };
+            return new[] { "en" };
+        }
+    }
+
     internal static class TextResources
     {
         public const string ToggleIndicator = "\uCEE4\uC11C \uC606 \uD45C\uC2DC \uCF1C\uAE30";
@@ -53,7 +150,8 @@ namespace CursorImeIndicator
         public const string ReloadImages = "\uCEE4\uC2A4\uD140 \uC774\uBBF8\uC9C0 \uB2E4\uC2DC \uBD88\uB7EC\uC624\uAE30";
         public const string SizeMenu = "\uD06C\uAE30";
         public const string DragSizeSettings = "\uB4DC\uB798\uADF8\uB85C \uD06C\uAE30 \uC870\uC815";
-        public const string AdjustFaceCenter = "\uC5BC\uAD74 \uC911\uC2EC \uC870\uC815";
+        public const string AdjustFaceCenter = "\uAE00\uC790 \uC704\uCE58 \uC870\uC815";
+        public const string ShowLabel = "\uAE00\uC790 \uD45C\uC2DC";
         public const string MascotColorMenu = "\uBBF8\uB2C8\uBBF8 \uC0C9\uC0C1";
         public const string UseLanguageColors = "\uC0C1\uD0DC\uBCC4 \uC0C9\uC0C1 \uC0AC\uC6A9";
         public const string BaseColor = "\uAE30\uBCF8 \uC0C9\uC0C1 \uC120\uD0DD";
@@ -61,7 +159,9 @@ namespace CursorImeIndicator
         public const string EnglishLowerColor = "\uC601\uC5B4 \uC18C\uBB38\uC790 \uC0C9\uC0C1 \uC120\uD0DD";
         public const string EnglishUpperColor = "\uC601\uC5B4 \uB300\uBB38\uC790 \uC0C9\uC0C1 \uC120\uD0DD";
         public const string SizeGain = "\uD06C\uAE30 \uAC8C\uC778";
-        public const string FaceCenter = "\uC5BC\uAD74 \uC911\uC2EC";
+        public const string FaceCenter = "\uAE00\uC790 \uC704\uCE58";
+        public const string State = "\uC0C1\uD0DC";
+        public const string Pose = "\uD3EC\uC988";
         public const string Reset = "\uAE30\uBCF8\uAC12";
         public const string Close = "\uB2EB\uAE30";
         public const string Exit = "\uC885\uB8CC";
@@ -78,6 +178,7 @@ namespace CursorImeIndicator
         private readonly ToolStripMenuItem enabledItem;
         private readonly ToolStripMenuItem stateItem;
         private readonly ToolStripMenuItem sizeMenu;
+        private readonly ToolStripMenuItem showLabelItem;
         private ToolStripMenuItem colorMenu;
         private ToolStripMenuItem useLanguageColorsItem;
         private readonly List<ToolStripMenuItem> sizePresetItems = new List<ToolStripMenuItem>();
@@ -104,6 +205,10 @@ namespace CursorImeIndicator
             sizeMenu = CreateSizeMenu();
             UpdateSizeMenuChecks();
             colorMenu = CreateColorMenu();
+            showLabelItem = new ToolStripMenuItem(TextResources.ShowLabel);
+            showLabelItem.CheckOnClick = true;
+            showLabelItem.Checked = settings.ShowLabel;
+            showLabelItem.CheckedChanged += OnShowLabelChanged;
 
             ContextMenuStrip menu = new ContextMenuStrip();
             menu.Items.Add(enabledItem);
@@ -112,6 +217,7 @@ namespace CursorImeIndicator
             menu.Items.Add(new ToolStripMenuItem(TextResources.ReloadImages, null, OnReloadImages));
             menu.Items.Add(sizeMenu);
             menu.Items.Add(colorMenu);
+            menu.Items.Add(showLabelItem);
             menu.Items.Add(new ToolStripMenuItem(TextResources.AdjustFaceCenter, null, OnOpenFaceCenterSettings));
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add(new ToolStripMenuItem(TextResources.Exit, null, OnExit));
@@ -277,9 +383,19 @@ namespace CursorImeIndicator
             UpdateSizeMenuChecks();
         }
 
-        private void SetFaceCenter(IndicatorPose pose, PointF center)
+        private void SetFaceCenter(string stateKey, IndicatorPose pose, PointF center)
         {
-            settings.SetFaceCenter(pose, center);
+            settings.SetLabelCenter(stateKey, pose, center);
+            settings.Save();
+            indicatorForm.RefreshFaceCenter();
+
+            if (faceCenterSettingsForm != null && !faceCenterSettingsForm.IsDisposed)
+                faceCenterSettingsForm.RefreshPreview();
+        }
+
+        private void OnShowLabelChanged(object sender, EventArgs e)
+        {
+            settings.ShowLabel = showLabelItem.Checked;
             settings.Save();
             indicatorForm.RefreshFaceCenter();
 
@@ -368,7 +484,7 @@ namespace CursorImeIndicator
             trayIcon.BalloonTipTitle = TextResources.TrayTitle;
             trayIcon.BalloonTipText = assets.LoadedCount > 0
                 ? "Loaded " + assets.LoadedCount + " custom image(s)."
-                : "No custom images found. Put idle.png, point.png, and cheer.png in the images folder.";
+                : "No custom images found. Put idle.png, point.png, cheer.png, or state-pose images in the images folder.";
             trayIcon.ShowBalloonTip(2500);
         }
 
@@ -494,7 +610,8 @@ namespace CursorImeIndicator
                 Invalidate();
             }
 
-            IndicatorImage image = GetCurrentImage();
+            bool mascotImage;
+            IndicatorImage image = GetCurrentImage(out mascotImage);
             if (image != null && image.Animated)
                 image.UpdateFrame();
 
@@ -544,18 +661,20 @@ namespace CursorImeIndicator
             e.Graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
             e.Graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
 
-            IndicatorImage image = GetCurrentImage();
+            bool mascotImage;
+            IndicatorImage image = GetCurrentImage(out mascotImage);
             float scale = GetPopScale();
 
             if (image != null)
             {
-                Rectangle imageRect = DrawImageIndicator(e.Graphics, image.Image, scale);
-                if (assets.HasPoseImages)
+                Rectangle imageRect = DrawImageIndicator(e.Graphics, image.Image, scale, mascotImage);
+                if (mascotImage && settings.ShowLabel)
                     DrawFaceLabel(e.Graphics, imageRect, indicatorText, scale);
                 return;
             }
 
-            DrawTextIndicator(e.Graphics, scale);
+            if (settings.ShowLabel)
+                DrawTextIndicator(e.Graphics, scale);
         }
 
         protected override void Dispose(bool disposing)
@@ -569,24 +688,20 @@ namespace CursorImeIndicator
         private IndicatorPose CalculatePose()
         {
             double sinceChange = (DateTime.UtcNow - stateChangedAtUtc).TotalMilliseconds;
-            if (sinceChange < PointMilliseconds && assets.GetPose(IndicatorPose.Point) != null)
+            if (sinceChange < PointMilliseconds && assets.HasPoseForLabel(indicatorText, IndicatorPose.Point))
                 return IndicatorPose.Point;
 
             double sinceStart = (DateTime.UtcNow - startedAtUtc).TotalMilliseconds;
             double cycle = sinceStart % CheerCycleMilliseconds;
-            if (sinceStart > 3000 && cycle < CheerDurationMilliseconds && assets.GetPose(IndicatorPose.Cheer) != null)
+            if (sinceStart > 3000 && cycle < CheerDurationMilliseconds && assets.HasPoseForLabel(indicatorText, IndicatorPose.Cheer))
                 return IndicatorPose.Cheer;
 
             return IndicatorPose.Idle;
         }
 
-        private IndicatorImage GetCurrentImage()
+        private IndicatorImage GetCurrentImage(out bool mascotImage)
         {
-            IndicatorImage poseImage = assets.GetPose(currentPose);
-            if (poseImage != null)
-                return poseImage;
-
-            return assets.GetLegacy(indicatorText);
+            return assets.GetImage(indicatorText, currentPose, out mascotImage);
         }
 
         private void ApplyDesiredSize()
@@ -598,7 +713,8 @@ namespace CursorImeIndicator
 
         private Size GetDesiredSize()
         {
-            IndicatorImage image = GetCurrentImage();
+            bool mascotImage;
+            IndicatorImage image = GetCurrentImage(out mascotImage);
             if (image == null)
             {
                 float ratio = sizePercent / 100.0f;
@@ -639,7 +755,7 @@ namespace CursorImeIndicator
             return 1.0f + (float)(Math.Sin(progress * Math.PI) * 0.16d);
         }
 
-        private Rectangle DrawImageIndicator(Graphics graphics, Image image, float popScale)
+        private Rectangle DrawImageIndicator(Graphics graphics, Image image, float popScale, bool mascotImage)
         {
             Size drawSize = GetImageDrawSize(image);
             int scaledWidth = Math.Max(1, (int)Math.Round(drawSize.Width * popScale));
@@ -650,10 +766,10 @@ namespace CursorImeIndicator
                 scaledWidth,
                 scaledHeight);
 
-            if (assets.HasPoseImages)
+            if (mascotImage)
             {
                 Color tint = settings.GetMascotColor(indicatorText);
-                using (Bitmap tinted = MascotColorizer.CreateTintedBitmap(image, tint, settings.GetFaceCenter(currentPose)))
+                using (Bitmap tinted = MascotColorizer.CreateTintedBitmap(image, tint, settings.GetLabelCenter(indicatorText, currentPose)))
                 {
                     graphics.DrawImage(tinted, rect);
                 }
@@ -679,12 +795,8 @@ namespace CursorImeIndicator
 
         private void DrawFaceLabel(Graphics graphics, Rectangle imageRect, string text, float popScale)
         {
-            PointF faceCenter = settings.GetFaceCenter(currentPose);
-            RectangleF faceRect = new RectangleF(
-                imageRect.Left + imageRect.Width * (faceCenter.X - 0.19f),
-                imageRect.Top + imageRect.Height * (faceCenter.Y - 0.13f),
-                imageRect.Width * 0.38f,
-                imageRect.Height * 0.26f);
+            PointF faceCenter = settings.GetLabelCenter(text, currentPose);
+            RectangleF faceRect = LabelGeometry.CreateLabelRect(imageRect, faceCenter);
 
             float fontSize = Math.Max(7.0f, imageRect.Height * (text == Labels.Korean ? 0.155f : 0.14f));
             using (Font font = new Font("Malgun Gothic", fontSize, FontStyle.Bold, GraphicsUnit.Pixel))
@@ -753,18 +865,39 @@ namespace CursorImeIndicator
         }
     }
 
+    internal static class LabelGeometry
+    {
+        public static RectangleF CreateLabelRect(Rectangle imageRect, PointF center)
+        {
+            float width = imageRect.Width * 0.38f;
+            float height = imageRect.Height * 0.26f;
+            float centerX = imageRect.Left + imageRect.Width * center.X;
+            float centerY = imageRect.Top + imageRect.Height * center.Y;
+            float x = centerX - (width / 2.0f);
+            float y = centerY - (height / 2.0f);
+
+            if (x < imageRect.Left)
+                x = imageRect.Left;
+            if (y < imageRect.Top)
+                y = imageRect.Top;
+            if (x + width > imageRect.Right)
+                x = imageRect.Right - width;
+            if (y + height > imageRect.Bottom)
+                y = imageRect.Bottom - height;
+
+            return new RectangleF(x, y, width, height);
+        }
+    }
+
     internal sealed class IndicatorAssets : IDisposable
     {
         private static readonly string[] Extensions = new[] { ".gif", ".png", ".jpg", ".jpeg", ".bmp" };
-        private readonly Dictionary<IndicatorPose, string> poseNames = new Dictionary<IndicatorPose, string>();
         private Dictionary<IndicatorPose, IndicatorImage> poseImages = new Dictionary<IndicatorPose, IndicatorImage>();
+        private Dictionary<string, IndicatorImage> statePoseImages = new Dictionary<string, IndicatorImage>(StringComparer.Ordinal);
         private Dictionary<string, IndicatorImage> legacyImages = new Dictionary<string, IndicatorImage>();
 
         public IndicatorAssets()
         {
-            poseNames[IndicatorPose.Idle] = "idle";
-            poseNames[IndicatorPose.Point] = "point";
-            poseNames[IndicatorPose.Cheer] = "cheer";
             Reload();
         }
 
@@ -775,63 +908,90 @@ namespace CursorImeIndicator
 
         public int LoadedCount
         {
-            get { return poseImages.Count + legacyImages.Count; }
+            get { return poseImages.Count + statePoseImages.Count + legacyImages.Count; }
         }
 
-        public bool HasPoseImages
+        public IndicatorImage GetImage(string label, IndicatorPose pose, out bool mascotImage)
         {
-            get { return poseImages.Count > 0; }
+            string stateKey = IndicatorStates.FromLabel(label);
+            IndicatorImage image = GetStatePoseExact(stateKey, pose);
+            if (image != null)
+            {
+                mascotImage = true;
+                return image;
+            }
+
+            image = GetPoseExact(pose);
+            if (image != null)
+            {
+                mascotImage = true;
+                return image;
+            }
+
+            image = GetPoseExact(IndicatorPose.Idle);
+            if (image != null)
+            {
+                mascotImage = true;
+                return image;
+            }
+
+            mascotImage = false;
+            return GetLegacy(label);
+        }
+
+        public IndicatorImage GetImageByStateKey(string stateKey, IndicatorPose pose, out bool mascotImage)
+        {
+            return GetImage(IndicatorStates.ToLabel(stateKey), pose, out mascotImage);
         }
 
         public IndicatorImage GetPose(IndicatorPose pose)
         {
-            IndicatorImage image;
-            if (poseImages.TryGetValue(pose, out image))
-                return image;
-
-            if (poseImages.TryGetValue(IndicatorPose.Idle, out image))
-                return image;
-
-            return null;
+            return GetPoseExact(pose);
         }
 
-        public IndicatorImage GetLegacy(string label)
+        public bool HasPoseForLabel(string label, IndicatorPose pose)
         {
-            IndicatorImage image;
-            if (legacyImages.TryGetValue(label, out image))
-                return image;
-
-            if (label == Labels.EnglishUpper && legacyImages.TryGetValue(Labels.EnglishLower, out image))
-                return image;
-
-            return null;
+            string stateKey = IndicatorStates.FromLabel(label);
+            return GetStatePoseExact(stateKey, pose) != null || GetPoseExact(pose) != null;
         }
 
         public void Reload()
         {
             Dictionary<IndicatorPose, IndicatorImage> oldPoseImages = poseImages;
+            Dictionary<string, IndicatorImage> oldStatePoseImages = statePoseImages;
             Dictionary<string, IndicatorImage> oldLegacyImages = legacyImages;
             Dictionary<IndicatorPose, IndicatorImage> newPoseImages = new Dictionary<IndicatorPose, IndicatorImage>();
+            Dictionary<string, IndicatorImage> newStatePoseImages = new Dictionary<string, IndicatorImage>(StringComparer.Ordinal);
             Dictionary<string, IndicatorImage> newLegacyImages = new Dictionary<string, IndicatorImage>();
 
-            foreach (KeyValuePair<IndicatorPose, string> pair in poseNames)
-                TryLoadPose(newPoseImages, ImageDirectory, pair.Key, pair.Value);
+            foreach (IndicatorPose pose in IndicatorPoseHelper.All)
+                TryLoadPose(newPoseImages, ImageDirectory, pose, IndicatorPoseHelper.GetKey(pose));
+
+            foreach (string stateKey in IndicatorStates.All)
+            {
+                foreach (IndicatorPose pose in IndicatorPoseHelper.All)
+                    TryLoadStatePose(newStatePoseImages, ImageDirectory, stateKey, pose);
+            }
 
             TryLoadLegacy(newLegacyImages, ImageDirectory, Labels.Korean, "han");
             TryLoadLegacy(newLegacyImages, ImageDirectory, Labels.EnglishLower, "en");
 
             poseImages = newPoseImages;
+            statePoseImages = newStatePoseImages;
             legacyImages = newLegacyImages;
 
             DisposeImages(oldPoseImages.Values);
+            DisposeImages(oldStatePoseImages.Values);
             DisposeImages(oldLegacyImages.Values);
         }
 
         public void Dispose()
         {
             DisposeImages(poseImages.Values);
+            DisposeImages(statePoseImages.Values);
             DisposeImages(legacyImages.Values);
             poseImages.Clear();
+            statePoseImages.Clear();
             legacyImages.Clear();
         }
 
@@ -848,6 +1008,20 @@ namespace CursorImeIndicator
                 target[pose] = image;
         }
 
+        private static void TryLoadStatePose(Dictionary<string, IndicatorImage> target, string imageDirectory, string stateKey, IndicatorPose pose)
+        {
+            string poseKey = IndicatorPoseHelper.GetKey(pose);
+            foreach (string prefix in IndicatorStates.GetFilePrefixes(stateKey))
+            {
+                IndicatorImage image = TryLoadFromFileExact(imageDirectory, prefix + "-" + poseKey);
+                if (image != null)
+                {
+                    target[MakeStatePoseKey(stateKey, pose)] = image;
+                    return;
+                }
+            }
+        }
+
         private static void TryLoadLegacy(Dictionary<string, IndicatorImage> target, string imageDirectory, string label, string fileNameWithoutExtension)
         {
             IndicatorImage image = TryLoadFromFile(imageDirectory, fileNameWithoutExtension);
@@ -855,11 +1029,58 @@ namespace CursorImeIndicator
                 target[label] = image;
         }
 
+        private IndicatorImage GetStatePoseExact(string stateKey, IndicatorPose pose)
+        {
+            IndicatorImage image;
+            if (statePoseImages.TryGetValue(MakeStatePoseKey(stateKey, pose), out image))
+                return image;
+
+            return null;
+        }
+
+        private IndicatorImage GetPoseExact(IndicatorPose pose)
+        {
+            IndicatorImage image;
+            if (poseImages.TryGetValue(pose, out image))
+                return image;
+
+            return null;
+        }
+
+        private IndicatorImage GetLegacy(string label)
+        {
+            IndicatorImage image;
+            if (legacyImages.TryGetValue(label, out image))
+                return image;
+
+            if (label == Labels.EnglishUpper && legacyImages.TryGetValue(Labels.EnglishLower, out image))
+                return image;
+
+            return null;
+        }
+
+        private static string MakeStatePoseKey(string stateKey, IndicatorPose pose)
+        {
+            return stateKey + "|" + IndicatorPoseHelper.GetKey(pose);
+        }
+
         private static IndicatorImage TryLoadFromFile(string imageDirectory, string fileNameWithoutExtension)
+        {
+            return TryLoadFromFile(imageDirectory, fileNameWithoutExtension, false);
+        }
+
+        private static IndicatorImage TryLoadFromFileExact(string imageDirectory, string fileNameWithoutExtension)
+        {
+            return TryLoadFromFile(imageDirectory, fileNameWithoutExtension, true);
+        }
+
+        private static IndicatorImage TryLoadFromFile(string imageDirectory, string fileNameWithoutExtension, bool exactFileName)
         {
             foreach (string extension in Extensions)
             {
-                string path = Path.Combine(imageDirectory, fileNameWithoutExtension + extension);
+                string path = exactFileName
+                    ? FindExactImagePath(imageDirectory, fileNameWithoutExtension + extension)
+                    : Path.Combine(imageDirectory, fileNameWithoutExtension + extension);
                 if (!File.Exists(path))
                     continue;
 
@@ -874,6 +1095,26 @@ namespace CursorImeIndicator
             }
 
             return null;
+        }
+
+        private static string FindExactImagePath(string imageDirectory, string fileName)
+        {
+            try
+            {
+                if (Directory.Exists(imageDirectory))
+                {
+                    foreach (string path in Directory.GetFiles(imageDirectory, fileName))
+                    {
+                        if (Path.GetFileName(path).Equals(fileName, StringComparison.Ordinal))
+                            return path;
+                    }
+                }
+            }
+            catch
+            {
+            }
+
+            return Path.Combine(imageDirectory, "__missing__" + fileName);
         }
     }
 
@@ -1103,12 +1344,13 @@ namespace CursorImeIndicator
     {
         private readonly IndicatorAssets assets;
         private readonly AppSettings settings;
-        private readonly Action<IndicatorPose, PointF> onChanged;
+        private readonly Action<string, IndicatorPose, PointF> onChanged;
+        private readonly ComboBox stateCombo;
         private readonly ComboBox poseCombo;
         private readonly FaceCenterPreview preview;
         private readonly Label coordinateLabel;
 
-        public FaceCenterSettingsForm(IndicatorAssets assets, AppSettings settings, Action<IndicatorPose, PointF> onChanged)
+        public FaceCenterSettingsForm(IndicatorAssets assets, AppSettings settings, Action<string, IndicatorPose, PointF> onChanged)
         {
             this.assets = assets;
             this.settings = settings;
@@ -1121,51 +1363,66 @@ namespace CursorImeIndicator
             ShowInTaskbar = false;
             TopMost = true;
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(360, 400);
+            ClientSize = new Size(390, 420);
+
+            Label stateLabel = new Label();
+            stateLabel.Text = TextResources.State;
+            stateLabel.Location = new Point(14, 14);
+            stateLabel.Size = new Size(48, 22);
+
+            stateCombo = new ComboBox();
+            stateCombo.DropDownStyle = ComboBoxStyle.DropDownList;
+            stateCombo.Location = new Point(66, 12);
+            stateCombo.Size = new Size(150, 24);
+            foreach (string stateKey in IndicatorStates.All)
+                stateCombo.Items.Add(new StateItem(stateKey, IndicatorStates.GetDisplayName(stateKey)));
+            stateCombo.SelectedIndexChanged += OnSelectionChanged;
 
             Label poseLabel = new Label();
-            poseLabel.Text = "Pose";
-            poseLabel.Location = new Point(14, 14);
+            poseLabel.Text = TextResources.Pose;
+            poseLabel.Location = new Point(230, 14);
             poseLabel.Size = new Size(48, 22);
 
             poseCombo = new ComboBox();
             poseCombo.DropDownStyle = ComboBoxStyle.DropDownList;
-            poseCombo.Location = new Point(66, 12);
-            poseCombo.Size = new Size(118, 24);
-            poseCombo.Items.Add(new PoseItem(IndicatorPose.Idle, "Idle"));
-            poseCombo.Items.Add(new PoseItem(IndicatorPose.Point, "Point"));
-            poseCombo.Items.Add(new PoseItem(IndicatorPose.Cheer, "Cheer"));
-            poseCombo.SelectedIndexChanged += OnPoseChanged;
+            poseCombo.Location = new Point(278, 12);
+            poseCombo.Size = new Size(96, 24);
+            foreach (IndicatorPose pose in IndicatorPoseHelper.All)
+                poseCombo.Items.Add(new PoseItem(pose, IndicatorPoseHelper.GetDisplayName(pose)));
+            poseCombo.SelectedIndexChanged += OnSelectionChanged;
 
             coordinateLabel = new Label();
             coordinateLabel.AutoSize = false;
-            coordinateLabel.TextAlign = ContentAlignment.MiddleRight;
-            coordinateLabel.Location = new Point(190, 12);
-            coordinateLabel.Size = new Size(154, 24);
+            coordinateLabel.TextAlign = ContentAlignment.MiddleLeft;
+            coordinateLabel.Location = new Point(14, 42);
+            coordinateLabel.Size = new Size(360, 24);
 
             preview = new FaceCenterPreview(assets, settings);
-            preview.Location = new Point(40, 48);
+            preview.Location = new Point(55, 74);
             preview.Size = new Size(280, 280);
             preview.CenterChanged += OnPreviewCenterChanged;
 
             Button resetButton = new Button();
             resetButton.Text = TextResources.Reset;
-            resetButton.Location = new Point(188, 350);
+            resetButton.Location = new Point(218, 376);
             resetButton.Size = new Size(76, 26);
             resetButton.Click += OnResetClicked;
 
             Button closeButton = new Button();
             closeButton.Text = TextResources.Close;
-            closeButton.Location = new Point(270, 350);
+            closeButton.Location = new Point(300, 376);
             closeButton.Size = new Size(74, 26);
             closeButton.Click += OnCloseClicked;
 
+            Controls.Add(stateLabel);
+            Controls.Add(stateCombo);
             Controls.Add(poseLabel);
             Controls.Add(poseCombo);
             Controls.Add(coordinateLabel);
             Controls.Add(preview);
             Controls.Add(resetButton);
             Controls.Add(closeButton);
+            stateCombo.SelectedIndex = 0;
             poseCombo.SelectedIndex = 0;
             RefreshPreview();
         }
@@ -1175,14 +1432,26 @@ namespace CursorImeIndicator
             if (preview == null || coordinateLabel == null || poseCombo == null)
                 return;
 
+            string stateKey = GetSelectedStateKey();
             IndicatorPose pose = GetSelectedPose();
-            preview.SetPose(pose);
-            PointF center = settings.GetFaceCenter(pose);
+            preview.SetSelection(stateKey, pose);
+            PointF center = settings.GetLabelCenterByState(stateKey, pose);
             coordinateLabel.Text = string.Format(
                 CultureInfo.InvariantCulture,
-                "X {0:0}%  Y {1:0}%",
+                "{0} / {1}    X {2:0}%  Y {3:0}%",
+                stateKey,
+                IndicatorPoseHelper.GetKey(pose),
                 center.X * 100.0f,
                 center.Y * 100.0f);
+        }
+
+        private string GetSelectedStateKey()
+        {
+            StateItem item = stateCombo.SelectedItem as StateItem;
+            if (item == null)
+                return IndicatorStates.Korean;
+
+            return item.StateKey;
         }
 
         private IndicatorPose GetSelectedPose()
@@ -1194,25 +1463,44 @@ namespace CursorImeIndicator
             return item.Pose;
         }
 
-        private void OnPoseChanged(object sender, EventArgs e)
+        private void OnSelectionChanged(object sender, EventArgs e)
         {
             RefreshPreview();
         }
 
         private void OnPreviewCenterChanged(object sender, FaceCenterChangedEventArgs e)
         {
-            onChanged(GetSelectedPose(), e.Center);
+            onChanged(GetSelectedStateKey(), GetSelectedPose(), e.Center);
         }
 
         private void OnResetClicked(object sender, EventArgs e)
         {
+            string stateKey = GetSelectedStateKey();
             IndicatorPose pose = GetSelectedPose();
-            onChanged(pose, AppSettings.GetDefaultFaceCenter(pose));
+            onChanged(stateKey, pose, AppSettings.GetDefaultFaceCenter(pose));
         }
 
         private void OnCloseClicked(object sender, EventArgs e)
         {
             Close();
+        }
+
+        private sealed class StateItem
+        {
+            public StateItem(string stateKey, string name)
+            {
+                StateKey = stateKey;
+                Name = name;
+            }
+
+            public string StateKey { get; private set; }
+
+            private string Name { get; set; }
+
+            public override string ToString()
+            {
+                return Name;
+            }
         }
 
         private sealed class PoseItem
@@ -1238,6 +1526,7 @@ namespace CursorImeIndicator
     {
         private readonly IndicatorAssets assets;
         private readonly AppSettings settings;
+        private string stateKey = IndicatorStates.Korean;
         private IndicatorPose pose = IndicatorPose.Idle;
         private bool dragging;
 
@@ -1252,8 +1541,9 @@ namespace CursorImeIndicator
 
         public event EventHandler<FaceCenterChangedEventArgs> CenterChanged;
 
-        public void SetPose(IndicatorPose pose)
+        public void SetSelection(string stateKey, IndicatorPose pose)
         {
+            this.stateKey = IndicatorStates.IsValidKey(stateKey) ? stateKey : IndicatorStates.Korean;
             this.pose = pose;
             Invalidate();
         }
@@ -1273,16 +1563,18 @@ namespace CursorImeIndicator
                 e.Graphics.DrawRectangle(border, new Rectangle(0, 0, Width - 1, Height - 1));
             }
 
-            IndicatorImage image = assets.GetPose(pose);
+            bool mascotImage;
+            IndicatorImage image = assets.GetImageByStateKey(stateKey, pose, out mascotImage);
             if (image != null)
             {
-                using (Bitmap tinted = MascotColorizer.CreateTintedBitmap(image.Image, settings.GetMascotColor(Labels.Korean), settings.GetFaceCenter(pose)))
+                string label = IndicatorStates.ToLabel(stateKey);
+                using (Bitmap tinted = MascotColorizer.CreateTintedBitmap(image.Image, settings.GetMascotColor(label), settings.GetLabelCenterByState(stateKey, pose)))
                 {
                     e.Graphics.DrawImage(tinted, imageRect);
                 }
             }
 
-            PointF center = settings.GetFaceCenter(pose);
+            PointF center = settings.GetLabelCenterByState(stateKey, pose);
             Point marker = new Point(
                 imageRect.Left + (int)Math.Round(imageRect.Width * center.X),
                 imageRect.Top + (int)Math.Round(imageRect.Height * center.Y));
@@ -1346,23 +1638,29 @@ namespace CursorImeIndicator
 
         private void DrawSampleLabel(Graphics graphics, Rectangle imageRect, PointF center)
         {
-            RectangleF faceRect = new RectangleF(
-                imageRect.Left + imageRect.Width * (center.X - 0.19f),
-                imageRect.Top + imageRect.Height * (center.Y - 0.13f),
-                imageRect.Width * 0.38f,
-                imageRect.Height * 0.26f);
+            string label = IndicatorStates.ToLabel(stateKey);
+            RectangleF faceRect = LabelGeometry.CreateLabelRect(imageRect, center);
 
             using (Font font = new Font("Malgun Gothic", Math.Max(11.0f, imageRect.Height * 0.13f), FontStyle.Bold, GraphicsUnit.Pixel))
-            using (SolidBrush fill = new SolidBrush(Color.FromArgb(24, 128, 91)))
+            using (SolidBrush fill = new SolidBrush(GetSampleLabelColor(label)))
             using (SolidBrush shadow = new SolidBrush(Color.FromArgb(130, Color.White)))
             using (StringFormat format = new StringFormat())
             {
                 format.Alignment = StringAlignment.Center;
                 format.LineAlignment = StringAlignment.Center;
                 RectangleF shadowRect = new RectangleF(faceRect.X + 1, faceRect.Y + 1, faceRect.Width, faceRect.Height);
-                graphics.DrawString(Labels.Korean, font, shadow, shadowRect, format);
-                graphics.DrawString(Labels.Korean, font, fill, faceRect, format);
+                graphics.DrawString(label, font, shadow, shadowRect, format);
+                graphics.DrawString(label, font, fill, faceRect, format);
             }
+        }
+
+        private static Color GetSampleLabelColor(string label)
+        {
+            if (label == Labels.Korean)
+                return Color.FromArgb(24, 128, 91);
+            if (label == Labels.EnglishUpper)
+                return Color.FromArgb(21, 70, 160);
+            return Color.FromArgb(38, 78, 140);
         }
     }
 
@@ -1381,10 +1679,11 @@ namespace CursorImeIndicator
         public const int MinSizePercent = 50;
         public const int MaxSizePercent = 250;
         private const int DefaultSizePercent = 100;
-        private const float MinFaceCenter = 0.18f;
-        private const float MaxFaceCenter = 0.82f;
+        private const float MinFaceCenter = 0.0f;
+        private const float MaxFaceCenter = 1.0f;
 
         public int SizePercent = DefaultSizePercent;
+        public bool ShowLabel = true;
         public PointF IdleFaceCenter = GetDefaultFaceCenter(IndicatorPose.Idle);
         public PointF PointFaceCenter = GetDefaultFaceCenter(IndicatorPose.Point);
         public PointF CheerFaceCenter = GetDefaultFaceCenter(IndicatorPose.Cheer);
@@ -1393,6 +1692,7 @@ namespace CursorImeIndicator
         public Color KoreanMascotColor = Color.FromArgb(80, 190, 145);
         public Color EnglishLowerMascotColor = Color.FromArgb(90, 135, 220);
         public Color EnglishUpperMascotColor = Color.FromArgb(120, 100, 220);
+        private readonly Dictionary<string, PointF> labelCenters = new Dictionary<string, PointF>(StringComparer.Ordinal);
 
         public static AppSettings Load()
         {
@@ -1410,51 +1710,62 @@ namespace CursorImeIndicator
                     if (parts.Length != 2)
                         continue;
 
-                    if (parts[0].Trim().Equals("sizePercent", StringComparison.OrdinalIgnoreCase))
+                    string key = parts[0].Trim();
+                    string valueText = parts[1].Trim();
+                    if (TryLoadLabelCenter(settings, key, valueText))
+                        continue;
+
+                    if (key.Equals("sizePercent", StringComparison.OrdinalIgnoreCase))
                     {
                         int value;
-                        if (int.TryParse(parts[1].Trim(), out value))
+                        if (int.TryParse(valueText, out value))
                             settings.SizePercent = ClampSizePercent(value);
                     }
-                    else if (parts[0].Trim().Equals("idleFace", StringComparison.OrdinalIgnoreCase))
-                    {
-                        settings.IdleFaceCenter = ParseFaceCenter(parts[1], GetDefaultFaceCenter(IndicatorPose.Idle));
-                    }
-                    else if (parts[0].Trim().Equals("pointFace", StringComparison.OrdinalIgnoreCase))
-                    {
-                        settings.PointFaceCenter = ParseFaceCenter(parts[1], GetDefaultFaceCenter(IndicatorPose.Point));
-                    }
-                    else if (parts[0].Trim().Equals("cheerFace", StringComparison.OrdinalIgnoreCase))
-                    {
-                        settings.CheerFaceCenter = ParseFaceCenter(parts[1], GetDefaultFaceCenter(IndicatorPose.Cheer));
-                    }
-                    else if (parts[0].Trim().Equals("useLanguageColors", StringComparison.OrdinalIgnoreCase))
+                    else if (key.Equals("showLabel", StringComparison.OrdinalIgnoreCase))
                     {
                         bool value;
-                        if (bool.TryParse(parts[1].Trim(), out value))
+                        if (bool.TryParse(valueText, out value))
+                            settings.ShowLabel = value;
+                    }
+                    else if (key.Equals("idleFace", StringComparison.OrdinalIgnoreCase))
+                    {
+                        settings.IdleFaceCenter = ParseFaceCenter(valueText, GetDefaultFaceCenter(IndicatorPose.Idle));
+                    }
+                    else if (key.Equals("pointFace", StringComparison.OrdinalIgnoreCase))
+                    {
+                        settings.PointFaceCenter = ParseFaceCenter(valueText, GetDefaultFaceCenter(IndicatorPose.Point));
+                    }
+                    else if (key.Equals("cheerFace", StringComparison.OrdinalIgnoreCase))
+                    {
+                        settings.CheerFaceCenter = ParseFaceCenter(valueText, GetDefaultFaceCenter(IndicatorPose.Cheer));
+                    }
+                    else if (key.Equals("useLanguageColors", StringComparison.OrdinalIgnoreCase))
+                    {
+                        bool value;
+                        if (bool.TryParse(valueText, out value))
                             settings.UseLanguageColors = value;
                     }
-                    else if (parts[0].Trim().Equals("baseMascotColor", StringComparison.OrdinalIgnoreCase))
+                    else if (key.Equals("baseMascotColor", StringComparison.OrdinalIgnoreCase))
                     {
-                        settings.BaseMascotColor = ParseColor(parts[1], settings.BaseMascotColor);
+                        settings.BaseMascotColor = ParseColor(valueText, settings.BaseMascotColor);
                     }
-                    else if (parts[0].Trim().Equals("koreanMascotColor", StringComparison.OrdinalIgnoreCase))
+                    else if (key.Equals("koreanMascotColor", StringComparison.OrdinalIgnoreCase))
                     {
-                        settings.KoreanMascotColor = ParseColor(parts[1], settings.KoreanMascotColor);
+                        settings.KoreanMascotColor = ParseColor(valueText, settings.KoreanMascotColor);
                     }
-                    else if (parts[0].Trim().Equals("englishMascotColor", StringComparison.OrdinalIgnoreCase))
+                    else if (key.Equals("englishMascotColor", StringComparison.OrdinalIgnoreCase))
                     {
-                        Color legacyColor = ParseColor(parts[1], settings.EnglishLowerMascotColor);
+                        Color legacyColor = ParseColor(valueText, settings.EnglishLowerMascotColor);
                         settings.EnglishLowerMascotColor = legacyColor;
                         settings.EnglishUpperMascotColor = legacyColor;
                     }
-                    else if (parts[0].Trim().Equals("englishLowerMascotColor", StringComparison.OrdinalIgnoreCase))
+                    else if (key.Equals("englishLowerMascotColor", StringComparison.OrdinalIgnoreCase))
                     {
-                        settings.EnglishLowerMascotColor = ParseColor(parts[1], settings.EnglishLowerMascotColor);
+                        settings.EnglishLowerMascotColor = ParseColor(valueText, settings.EnglishLowerMascotColor);
                     }
-                    else if (parts[0].Trim().Equals("englishUpperMascotColor", StringComparison.OrdinalIgnoreCase))
+                    else if (key.Equals("englishUpperMascotColor", StringComparison.OrdinalIgnoreCase))
                     {
-                        settings.EnglishUpperMascotColor = ParseColor(parts[1], settings.EnglishUpperMascotColor);
+                        settings.EnglishUpperMascotColor = ParseColor(valueText, settings.EnglishUpperMascotColor);
                     }
                 }
             }
@@ -1471,19 +1782,25 @@ namespace CursorImeIndicator
             {
                 string path = GetSettingsPath();
                 Directory.CreateDirectory(Path.GetDirectoryName(path));
-                string[] lines = new[]
+                List<string> lines = new List<string>();
+                lines.Add("sizePercent=" + ClampSizePercent(SizePercent));
+                lines.Add("showLabel=" + ShowLabel);
+                lines.Add("idleFace=" + FormatFaceCenter(IdleFaceCenter));
+                lines.Add("pointFace=" + FormatFaceCenter(PointFaceCenter));
+                lines.Add("cheerFace=" + FormatFaceCenter(CheerFaceCenter));
+                foreach (string stateKey in IndicatorStates.All)
                 {
-                    "sizePercent=" + ClampSizePercent(SizePercent),
-                    "idleFace=" + FormatFaceCenter(IdleFaceCenter),
-                    "pointFace=" + FormatFaceCenter(PointFaceCenter),
-                    "cheerFace=" + FormatFaceCenter(CheerFaceCenter),
-                    "useLanguageColors=" + UseLanguageColors,
-                    "baseMascotColor=" + FormatColor(BaseMascotColor),
-                    "koreanMascotColor=" + FormatColor(KoreanMascotColor),
-                    "englishLowerMascotColor=" + FormatColor(EnglishLowerMascotColor),
-                    "englishUpperMascotColor=" + FormatColor(EnglishUpperMascotColor)
-                };
-                File.WriteAllLines(path, lines);
+                    foreach (IndicatorPose pose in IndicatorPoseHelper.All)
+                    {
+                        lines.Add("label." + stateKey + "." + IndicatorPoseHelper.GetKey(pose) + "=" + FormatFaceCenter(GetLabelCenterByState(stateKey, pose)));
+                    }
+                }
+                lines.Add("useLanguageColors=" + UseLanguageColors);
+                lines.Add("baseMascotColor=" + FormatColor(BaseMascotColor));
+                lines.Add("koreanMascotColor=" + FormatColor(KoreanMascotColor));
+                lines.Add("englishLowerMascotColor=" + FormatColor(EnglishLowerMascotColor));
+                lines.Add("englishUpperMascotColor=" + FormatColor(EnglishUpperMascotColor));
+                File.WriteAllLines(path, lines.ToArray());
             }
             catch
             {
@@ -1517,6 +1834,28 @@ namespace CursorImeIndicator
                 CheerFaceCenter = clamped;
             else
                 IdleFaceCenter = clamped;
+        }
+
+        public PointF GetLabelCenter(string label, IndicatorPose pose)
+        {
+            return GetLabelCenterByState(IndicatorStates.FromLabel(label), pose);
+        }
+
+        public PointF GetLabelCenterByState(string stateKey, IndicatorPose pose)
+        {
+            PointF center;
+            if (labelCenters.TryGetValue(MakeLabelCenterKey(stateKey, pose), out center))
+                return center;
+
+            return GetFaceCenter(pose);
+        }
+
+        public void SetLabelCenter(string stateKey, IndicatorPose pose, PointF center)
+        {
+            if (!IndicatorStates.IsValidKey(stateKey))
+                stateKey = IndicatorStates.Korean;
+
+            labelCenters[MakeLabelCenterKey(stateKey, pose)] = ClampFaceCenter(center);
         }
 
         public static PointF GetDefaultFaceCenter(IndicatorPose pose)
@@ -1560,6 +1899,29 @@ namespace CursorImeIndicator
         {
             PointF clamped = ClampFaceCenter(center);
             return clamped.X.ToString("0.###", CultureInfo.InvariantCulture) + "," + clamped.Y.ToString("0.###", CultureInfo.InvariantCulture);
+        }
+
+        private static bool TryLoadLabelCenter(AppSettings settings, string key, string value)
+        {
+            if (!key.StartsWith("label.", StringComparison.Ordinal))
+                return false;
+
+            string[] keyParts = key.Split('.');
+            if (keyParts.Length != 3)
+                return true;
+
+            string stateKey = keyParts[1];
+            IndicatorPose pose;
+            if (!IndicatorStates.IsValidKey(stateKey) || !IndicatorPoseHelper.TryParseKey(keyParts[2], out pose))
+                return true;
+
+            settings.labelCenters[MakeLabelCenterKey(stateKey, pose)] = ParseFaceCenter(value, GetDefaultFaceCenter(pose));
+            return true;
+        }
+
+        private static string MakeLabelCenterKey(string stateKey, IndicatorPose pose)
+        {
+            return stateKey + "|" + IndicatorPoseHelper.GetKey(pose);
         }
 
         private static PointF ParseFaceCenter(string value, PointF fallback)

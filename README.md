@@ -32,7 +32,7 @@ The app still works with only the exe. If `dist/images/` is included, the humano
 
 ## Included Mascot Images
 
-The default image pack uses exactly three pose files:
+The default image pack uses three shared pose files:
 
 | Pose | File | Behavior |
 | --- | --- | --- |
@@ -40,11 +40,15 @@ The default image pack uses exactly three pose files:
 | Point | `dist/images/point.png` | Shown for 1 second after input mode changes |
 | Cheer | `dist/images/cheer.png` | Shown periodically |
 
-The app draws `한`, `en`, or `EN` on the mascot face at runtime, so you only need three pose images.
+The app draws `한`, `en`, or `EN` on the mascot face at runtime, so the basic pack only needs three pose images.
 
 ## Custom Images / 이미지 추가
 
-To replace the mascot, put your own three images next to the exe:
+To replace the mascot, put images next to the exe. You can use either a 3-image shared pack or a 9-image state pack.
+
+### 3-image shared pack
+
+Use three pose images. The app draws `한`, `en`, or `EN` on top of the same image set:
 
 ```text
 dist/
@@ -54,6 +58,27 @@ dist/
     point.png
     cheer.png
 ```
+
+### 9-image state pack
+
+Use separate images for each input state and pose. The app picks the image by current state + current pose:
+
+```text
+dist/
+  HanEnCursorIndicator.exe
+  images/
+    ko-idle.png
+    ko-point.png
+    ko-cheer.png
+    en-idle.png
+    en-point.png
+    en-cheer.png
+    upper-idle.png
+    upper-point.png
+    upper-cheer.png
+```
+
+State names inside the app are `ko`, `en`, and `EN`. `EN-idle.png`, `EN-point.png`, and `EN-cheer.png` are also supported, but Windows folders are usually case-insensitive, so `upper-*` is the safer filename set when you also have `en-*` files in the same folder.
 
 Supported image formats:
 
@@ -75,6 +100,10 @@ images/cheer.png
 images/cheer.jpg
 images/cheer.jpeg
 images/cheer.bmp
+
+images/ko-idle.png
+images/en-idle.png
+images/upper-idle.png
 ```
 
 The app searches in this order: GIF, PNG, JPG, JPEG, BMP.
@@ -83,7 +112,8 @@ Tips:
 
 - Use transparent PNG files for clean static mascot poses.
 - Use animated GIF files if you want a moving pose.
-- Leave a blank face area; the app draws `한`, `en`, or `EN` automatically.
+- With a 3-image pack, leave a blank face area; the app draws `한`, `en`, or `EN` automatically.
+- With a 9-image pack, you can include the text directly in each image and turn off `글자 표시` from the tray menu.
 - Right-click the tray icon and choose `이미지 폴더 열기` to open the correct folder.
 - After changing files, choose `커스텀 이미지 다시 불러오기`.
 
@@ -96,15 +126,23 @@ Right-click the tray icon and open `크기`.
 - Drag the slider with the mouse to tune the size gain by percentage.
 - The selected percentage is saved and reused next time.
 
-## Face Center Control / 얼굴 중심 조정
+## Label Position Control / 글자 위치 조정
 
-Right-click the tray icon and choose `얼굴 중심 조정`.
+Right-click the tray icon and choose `글자 위치 조정`.
 
+- Choose a state: `ko`, `en`, or `EN`.
 - Choose a pose: `Idle`, `Point`, or `Cheer`.
-- Drag the blue point on the preview to the center of the mascot face.
-- The app saves the face center separately for each pose.
-- The `한`, `en`, and `EN` labels use that saved center immediately.
-- Use `기본값` to reset the selected pose.
+- Drag the blue point anywhere on the image preview to place the label center.
+- The app saves label positions separately for each state + pose combination.
+- Use `기본값` to reset the selected state + pose.
+
+## Label Toggle / 글자 표시
+
+Right-click the tray icon and toggle `글자 표시`.
+
+- On: the app draws `한`, `en`, or `EN` over the mascot.
+- Off: the mascot image follows the cursor without drawing extra text.
+- This is useful when a 9-image pack already has the face text inside each image.
 
 ## Mascot Color / 미니미 색상
 
@@ -123,6 +161,7 @@ Right-click the tray icon and open `미니미 색상`.
 - `point.png` appears for 1 second after the language state changes.
 - `idle.png` returns after the point animation.
 - `cheer.png` appears periodically.
+- State-specific files such as `ko-point.png` or `upper-cheer.png` override the shared pose image.
 - Custom animated GIF poses keep their GIF animation.
 - If no custom image is found, the app falls back to the default text badge.
 
@@ -131,12 +170,13 @@ Right-click the tray icon and open `미니미 색상`.
 - Shows `한` for Korean input mode.
 - Shows `en` for English lowercase mode.
 - Shows `EN` for English uppercase mode, including Caps Lock / Shift state.
-- Humanoid minimi mascot with three pose images.
+- Humanoid minimi mascot with 3-image or 9-image packs.
 - Optional custom PNG/JPG/BMP/GIF images.
 - Tray menu on/off toggle.
 - Tray menu image reload.
+- Tray menu label visibility toggle.
 - Tray menu size presets and drag slider.
-- Tray menu face-center drag editor.
+- Tray menu state + pose label-position drag editor.
 - Tray menu mascot color picker.
 
 ## MVP Direction
