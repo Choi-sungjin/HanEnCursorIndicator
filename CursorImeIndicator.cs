@@ -169,9 +169,13 @@ namespace CursorImeIndicator
         public const string KoreanLabelColor = "\uD55C\uAE00 \uAE00\uC528 \uC0C9\uC0C1";
         public const string EnglishLowerLabelColor = "\uC601\uC5B4 \uC18C\uBB38\uC790 \uAE00\uC528 \uC0C9\uC0C1";
         public const string EnglishUpperLabelColor = "\uC601\uC5B4 \uB300\uBB38\uC790 \uAE00\uC528 \uC0C9\uC0C1";
-        public const string UseCutoutLine = "\uBC30\uACBD \uB77C\uC778\uC73C\uB85C \uB204\uB07C \uBCF4\uC815";
-        public const string CutoutLineSelection = "\uBC30\uACBD \uB77C\uC778 \uC120\uD0DD";
-        public const string CutoutLineHint = "\uBC30\uACBD\uC73C\uB85C \uC9C0\uC6B8 \uC601\uC5ED\uC5D0 \uC120\uC744 \uADF8\uB9B0 \uB4A4 OK\uB97C \uB204\uB974\uC138\uC694.";
+        public const string UseCutoutLine = "\uB77C\uC778\uC73C\uB85C \uB204\uB07C \uBCF4\uC815";
+        public const string ForegroundCutoutLine = "\uD53C\uC0AC\uCCB4 \uB77C\uC778 \uBCF4\uD638";
+        public const string BackgroundCutoutLine = "\uBC30\uACBD \uB77C\uC778 \uC81C\uAC70";
+        public const string CutoutForegroundLineSelection = "\uD53C\uC0AC\uCCB4 \uBCF4\uD638 \uB77C\uC778 \uC120\uD0DD";
+        public const string CutoutBackgroundLineSelection = "\uBC30\uACBD \uC81C\uAC70 \uB77C\uC778 \uC120\uD0DD";
+        public const string CutoutForegroundLineHint = "\uBCF4\uC874\uD560 \uC5BC\uAD74/\uBAB8/\uB2E4\uB9AC \uC704\uB098 \uC724\uACFD\uC5D0 \uC120\uC744 \uADF8\uB9B0 \uB4A4 OK\uB97C \uB204\uB974\uC138\uC694.";
+        public const string CutoutBackgroundLineHint = "\uBC30\uACBD\uC73C\uB85C \uC9C0\uC6B8 \uC601\uC5ED\uC5D0 \uC120\uC744 \uADF8\uB9B0 \uB4A4 OK\uB97C \uB204\uB974\uC138\uC694.";
         public const string Undo = "\uB418\uB3CC\uB9AC\uAE30";
         public const string Clear = "\uCD08\uAE30\uD654";
         public const string SizeGain = "\uD06C\uAE30 \uAC8C\uC778";
@@ -436,19 +440,19 @@ namespace CursorImeIndicator
                     try
                     {
                         string outputPath = BackgroundRemover.GetOutputPath(path);
-                        List<CutoutLine> backgroundLines = new List<CutoutLine>();
-                        if (options.UseBackgroundLine)
+                        List<CutoutLine> cutoutLines = new List<CutoutLine>();
+                        if (options.UseCutoutLine)
                         {
-                            using (CutoutLineSelectionForm lineForm = new CutoutLineSelectionForm(path))
+                            using (CutoutLineSelectionForm lineForm = new CutoutLineSelectionForm(path, options.LineKind))
                             {
                                 if (lineForm.ShowDialog() != DialogResult.OK)
                                     continue;
 
-                                backgroundLines = lineForm.Lines;
+                                cutoutLines = lineForm.Lines;
                             }
                         }
 
-                        BackgroundRemover.SaveTransparentCopy(path, outputPath, options.ResizeEnabled ? options.MaxSize : 0, backgroundLines);
+                        BackgroundRemover.SaveTransparentCopy(path, outputPath, options.ResizeEnabled ? options.MaxSize : 0, cutoutLines);
                         saved++;
                     }
                     catch
@@ -1638,17 +1642,31 @@ namespace CursorImeIndicator
         }
     }
 
+    internal enum CutoutLineKind
+    {
+        Foreground,
+        Background
+    }
+
     internal sealed class CutoutLine
     {
         public CutoutLine(PointF start, PointF end)
+            : this(start, end, CutoutLineKind.Foreground)
+        {
+        }
+
+        public CutoutLine(PointF start, PointF end, CutoutLineKind kind)
         {
             Start = start;
             End = end;
+            Kind = kind;
         }
 
         public PointF Start { get; private set; }
 
         public PointF End { get; private set; }
+
+        public CutoutLineKind Kind { get; private set; }
     }
 
     internal static class BackgroundRemover
@@ -1711,9 +1729,11 @@ namespace CursorImeIndicator
             }
         }
 
-        private static void RemoveEdgeBackground(Bitmap bitmap, IEnumerable<CutoutLine> backgroundLines)
+        private static void RemoveEdgeBackground(Bitmap bitmap, IEnumerable<CutoutLine> cutoutLines)
         {
-            List<CutoutLine> lines = NormalizeCutoutLines(backgroundLines);
+            List<CutoutLine> lines = NormalizeCutoutLines(cutoutLines);
+            List<CutoutLine> foregroundLines = FilterCutoutLines(lines, CutoutLineKind.Foreground);
+            List<CutoutLine> backgroundLines = FilterCutoutLines(lines, CutoutLineKind.Background);
             int width = bitmap.Width;
             int height = bitmap.Height;
             Rectangle rect = new Rectangle(0, 0, width, height);
@@ -1725,7 +1745,7 @@ namespace CursorImeIndicator
                 byte[] bytes = new byte[Math.Abs(stride) * height];
                 Marshal.Copy(data.Scan0, bytes, 0, bytes.Length);
 
-                bool[] background = FindConnectedBackground(bytes, width, height, stride, true, lines);
+                bool[] background = FindConnectedBackground(bytes, width, height, stride, true, backgroundLines);
                 if (RemovesTooMuch(bytes, background, width, height, stride))
                 {
                     background = FindConnectedBackground(bytes, width, height, stride, true, null);
@@ -1733,7 +1753,15 @@ namespace CursorImeIndicator
                         background = FindConnectedBackground(bytes, width, height, stride, false, null);
                 }
 
-                ApplySubjectCropFallback(bytes, background, width, height, stride);
+                if (foregroundLines.Count > 0)
+                {
+                    ApplyForegroundLineCropFallback(bytes, background, width, height, stride, foregroundLines);
+                    ProtectForegroundLines(bytes, background, width, height, stride, foregroundLines);
+                }
+                else
+                {
+                    ApplySubjectCropFallback(bytes, background, width, height, stride);
+                }
 
                 for (int p = 0; p < background.Length; p++)
                 {
@@ -1791,6 +1819,93 @@ namespace CursorImeIndicator
                     background[p] = true;
                 }
             }
+        }
+
+        private static void ApplyForegroundLineCropFallback(byte[] bytes, bool[] background, int width, int height, int stride, IList<CutoutLine> foregroundLines)
+        {
+            Rectangle lineBounds = GetLineBounds(foregroundLines, width, height);
+            if (lineBounds.IsEmpty)
+                return;
+
+            if (lineBounds.Width < width * 0.025d && lineBounds.Height < height * 0.025d)
+                return;
+
+            Rectangle crop = ExpandForegroundLineCrop(lineBounds, width, height);
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    if (crop.Contains(x, y))
+                        continue;
+
+                    background[(y * width) + x] = true;
+                }
+            }
+        }
+
+        private static void ProtectForegroundLines(byte[] bytes, bool[] background, int width, int height, int stride, IList<CutoutLine> foregroundLines)
+        {
+            if (foregroundLines == null || foregroundLines.Count == 0)
+                return;
+
+            Rectangle lineBounds = GetLineBounds(foregroundLines, width, height);
+            if (lineBounds.IsEmpty)
+                return;
+
+            Rectangle limit = ExpandForegroundLineCrop(lineBounds, width, height);
+            bool[] protectedMask = BuildForegroundLineMask(bytes, width, height, stride, foregroundLines, limit);
+            int protectedCount = CountMask(protectedMask);
+            if (protectedCount <= 0 || protectedCount > width * height * 0.72d)
+                return;
+
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    int p = (y * width) + x;
+                    if (protectedMask[p])
+                    {
+                        background[p] = false;
+                    }
+                    else if (limit.Contains(x, y))
+                    {
+                        background[p] = true;
+                    }
+                }
+            }
+        }
+
+        private static bool[] BuildForegroundLineMask(byte[] bytes, int width, int height, int stride, IList<CutoutLine> foregroundLines, Rectangle limit)
+        {
+            bool[] mask = new bool[width * height];
+            bool[] visited = new bool[width * height];
+            int[] queue = new int[width * height];
+            ForegroundLineColorModel model = ForegroundLineColorModel.Create(bytes, width, height, stride, foregroundLines);
+            int head = 0;
+            int tail = 0;
+
+            AddForegroundLineSeeds(bytes, visited, mask, queue, ref tail, width, height, stride, foregroundLines, limit);
+
+            while (head < tail)
+            {
+                int p = queue[head++];
+                int x = p % width;
+                int y = p / width;
+
+                AddForegroundNeighbor(bytes, visited, mask, queue, ref tail, width, height, stride, model, limit, x - 1, y);
+                AddForegroundNeighbor(bytes, visited, mask, queue, ref tail, width, height, stride, model, limit, x + 1, y);
+                AddForegroundNeighbor(bytes, visited, mask, queue, ref tail, width, height, stride, model, limit, x, y - 1);
+                AddForegroundNeighbor(bytes, visited, mask, queue, ref tail, width, height, stride, model, limit, x, y + 1);
+            }
+
+            Rectangle maskBounds = GetMaskBounds(mask, width, height);
+            if (!maskBounds.IsEmpty)
+            {
+                Rectangle dilateLimit = ExpandSubjectCrop(maskBounds, width, height);
+                mask = DilateMask(mask, width, height, Math.Max(2, Math.Min(width, height) / 96), dilateLimit);
+            }
+
+            return mask;
         }
 
         private static Rectangle GetRemainingBounds(byte[] bytes, bool[] background, int width, int height, int stride)
@@ -2114,6 +2229,37 @@ namespace CursorImeIndicator
             return current;
         }
 
+        private static Rectangle GetMaskBounds(bool[] mask, int width, int height)
+        {
+            int left = width;
+            int top = height;
+            int right = -1;
+            int bottom = -1;
+
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    if (!mask[(y * width) + x])
+                        continue;
+
+                    if (x < left)
+                        left = x;
+                    if (y < top)
+                        top = y;
+                    if (x > right)
+                        right = x;
+                    if (y > bottom)
+                        bottom = y;
+                }
+            }
+
+            if (right < left || bottom < top)
+                return Rectangle.Empty;
+
+            return Rectangle.FromLTRB(left, top, right + 1, bottom + 1);
+        }
+
         private static void SetMask(bool[] mask, int width, int height, Rectangle limit, int x, int y)
         {
             if (x < limit.Left || y < limit.Top || x >= limit.Right || y >= limit.Bottom)
@@ -2234,6 +2380,101 @@ namespace CursorImeIndicator
             tail++;
         }
 
+        private static void AddForegroundLineSeeds(byte[] bytes, bool[] visited, bool[] mask, int[] queue, ref int tail, int width, int height, int stride, IList<CutoutLine> foregroundLines, Rectangle limit)
+        {
+            foreach (CutoutLine line in foregroundLines)
+            {
+                int x1 = RatioToPixel(line.Start.X, width);
+                int y1 = RatioToPixel(line.Start.Y, height);
+                int x2 = RatioToPixel(line.End.X, width);
+                int y2 = RatioToPixel(line.End.Y, height);
+                int steps = Math.Max(Math.Abs(x2 - x1), Math.Abs(y2 - y1));
+                if (steps < 1)
+                    steps = 1;
+
+                for (int i = 0; i <= steps; i++)
+                {
+                    double t = i / (double)steps;
+                    int x = (int)Math.Round(x1 + ((x2 - x1) * t));
+                    int y = (int)Math.Round(y1 + ((y2 - y1) * t));
+                    AddForegroundSeed(bytes, visited, mask, queue, ref tail, width, height, stride, limit, x, y);
+                    AddForegroundSeed(bytes, visited, mask, queue, ref tail, width, height, stride, limit, x - 1, y);
+                    AddForegroundSeed(bytes, visited, mask, queue, ref tail, width, height, stride, limit, x + 1, y);
+                    AddForegroundSeed(bytes, visited, mask, queue, ref tail, width, height, stride, limit, x, y - 1);
+                    AddForegroundSeed(bytes, visited, mask, queue, ref tail, width, height, stride, limit, x, y + 1);
+                }
+            }
+        }
+
+        private static void AddForegroundSeed(byte[] bytes, bool[] visited, bool[] mask, int[] queue, ref int tail, int width, int height, int stride, Rectangle limit, int x, int y)
+        {
+            if (x < limit.Left || y < limit.Top || x >= limit.Right || y >= limit.Bottom)
+                return;
+            if (x < 0 || y < 0 || x >= width || y >= height)
+                return;
+
+            int p = (y * width) + x;
+            if (visited[p])
+                return;
+
+            int offset = (y * stride) + (x * 4);
+            if (bytes[offset + 3] < 8)
+                return;
+
+            visited[p] = true;
+            mask[p] = true;
+            queue[tail++] = p;
+        }
+
+        private static void AddForegroundNeighbor(byte[] bytes, bool[] visited, bool[] mask, int[] queue, ref int tail, int width, int height, int stride, ForegroundLineColorModel model, Rectangle limit, int x, int y)
+        {
+            if (x < limit.Left || y < limit.Top || x >= limit.Right || y >= limit.Bottom)
+                return;
+            if (x < 0 || y < 0 || x >= width || y >= height)
+                return;
+
+            int p = (y * width) + x;
+            if (visited[p])
+                return;
+
+            int offset = (y * stride) + (x * 4);
+            if (!IsForegroundLinePixel(bytes, offset, model))
+                return;
+
+            visited[p] = true;
+            mask[p] = true;
+            queue[tail++] = p;
+        }
+
+        private static bool IsForegroundLinePixel(byte[] bytes, int offset, ForegroundLineColorModel model)
+        {
+            if (bytes[offset + 3] < 8)
+                return false;
+
+            if (model.Matches(bytes, offset))
+                return IsMarkedSubjectCandidate(bytes, offset);
+
+            return false;
+        }
+
+        private static bool IsMarkedSubjectCandidate(byte[] bytes, int offset)
+        {
+            int b = bytes[offset];
+            int g = bytes[offset + 1];
+            int r = bytes[offset + 2];
+            int max = Math.Max(r, Math.Max(g, b));
+            int min = Math.Min(r, Math.Min(g, b));
+            double average = (r + g + b) / 3.0d;
+            double saturation = max == 0 ? 0.0d : (max - min) / (double)max;
+
+            if (saturation >= 0.24d)
+                return true;
+
+            bool skinLike = r > 95 && g > 50 && b > 38 && r > g * 1.04d && r > b * 1.12d;
+            bool brightFace = average > 150.0d && saturation >= 0.10d;
+            return skinLike || brightFace;
+        }
+
         private static bool IsBackgroundPixel(byte[] bytes, int offset, BackgroundColorModel model)
         {
             int b = bytes[offset];
@@ -2315,10 +2556,67 @@ namespace CursorImeIndicator
                 if (Math.Abs(start.X - end.X) < 0.001f && Math.Abs(start.Y - end.Y) < 0.001f)
                     continue;
 
-                lines.Add(new CutoutLine(start, end));
+                lines.Add(new CutoutLine(start, end, line.Kind));
             }
 
             return lines;
+        }
+
+        private static List<CutoutLine> FilterCutoutLines(IEnumerable<CutoutLine> lines, CutoutLineKind kind)
+        {
+            List<CutoutLine> filtered = new List<CutoutLine>();
+            if (lines == null)
+                return filtered;
+
+            foreach (CutoutLine line in lines)
+            {
+                if (line != null && line.Kind == kind)
+                    filtered.Add(line);
+            }
+
+            return filtered;
+        }
+
+        private static Rectangle GetLineBounds(IList<CutoutLine> lines, int width, int height)
+        {
+            if (lines == null || lines.Count == 0)
+                return Rectangle.Empty;
+
+            int left = width;
+            int top = height;
+            int right = -1;
+            int bottom = -1;
+
+            foreach (CutoutLine line in lines)
+            {
+                int x1 = RatioToPixel(line.Start.X, width);
+                int y1 = RatioToPixel(line.Start.Y, height);
+                int x2 = RatioToPixel(line.End.X, width);
+                int y2 = RatioToPixel(line.End.Y, height);
+                left = Math.Min(left, Math.Min(x1, x2));
+                top = Math.Min(top, Math.Min(y1, y2));
+                right = Math.Max(right, Math.Max(x1, x2));
+                bottom = Math.Max(bottom, Math.Max(y1, y2));
+            }
+
+            if (right < left || bottom < top)
+                return Rectangle.Empty;
+
+            return Rectangle.FromLTRB(left, top, right + 1, bottom + 1);
+        }
+
+        private static Rectangle ExpandForegroundLineCrop(Rectangle box, int width, int height)
+        {
+            if (box.IsEmpty)
+                return Rectangle.Empty;
+
+            int padX = Math.Max((int)Math.Round(width * 0.11d), (int)Math.Round(box.Width * 0.38d));
+            int padY = Math.Max((int)Math.Round(height * 0.14d), (int)Math.Round(box.Height * 0.46d));
+            int left = Math.Max(0, box.Left - padX);
+            int top = Math.Max(0, box.Top - padY);
+            int right = Math.Min(width, box.Right + padX);
+            int bottom = Math.Min(height, box.Bottom + padY);
+            return Rectangle.FromLTRB(left, top, right, bottom);
         }
 
         private static float ClampRatio(float value)
@@ -2475,6 +2773,80 @@ namespace CursorImeIndicator
             }
         }
 
+        private sealed class ForegroundLineColorModel
+        {
+            private readonly List<ColorSample> samples;
+            private readonly double toleranceSquared;
+
+            private ForegroundLineColorModel(List<ColorSample> samples, double tolerance)
+            {
+                this.samples = samples;
+                toleranceSquared = tolerance * tolerance;
+            }
+
+            public static ForegroundLineColorModel Create(byte[] bytes, int width, int height, int stride, IList<CutoutLine> foregroundLines)
+            {
+                List<ColorSample> samples = new List<ColorSample>();
+                if (foregroundLines != null)
+                {
+                    foreach (CutoutLine line in foregroundLines)
+                    {
+                        int x1 = RatioToPixel(line.Start.X, width);
+                        int y1 = RatioToPixel(line.Start.Y, height);
+                        int x2 = RatioToPixel(line.End.X, width);
+                        int y2 = RatioToPixel(line.End.Y, height);
+                        int steps = Math.Max(Math.Abs(x2 - x1), Math.Abs(y2 - y1));
+                        if (steps < 1)
+                            steps = 1;
+
+                        int strideStep = Math.Max(1, steps / 56);
+                        for (int i = 0; i <= steps; i += strideStep)
+                        {
+                            double t = i / (double)steps;
+                            int x = (int)Math.Round(x1 + ((x2 - x1) * t));
+                            int y = (int)Math.Round(y1 + ((y2 - y1) * t));
+                            AddSample(samples, bytes, x, y, width, height, stride);
+                        }
+                    }
+                }
+
+                return new ForegroundLineColorModel(samples, 46.0d);
+            }
+
+            public bool Matches(byte[] bytes, int offset)
+            {
+                if (samples.Count == 0)
+                    return false;
+
+                int b = bytes[offset];
+                int g = bytes[offset + 1];
+                int r = bytes[offset + 2];
+
+                foreach (ColorSample sample in samples)
+                {
+                    double dr = r - sample.R;
+                    double dg = g - sample.G;
+                    double db = b - sample.B;
+                    if ((dr * dr) + (dg * dg) + (db * db) <= toleranceSquared)
+                        return true;
+                }
+
+                return false;
+            }
+
+            private static void AddSample(List<ColorSample> samples, byte[] bytes, int x, int y, int width, int height, int stride)
+            {
+                if (x < 0 || y < 0 || x >= width || y >= height)
+                    return;
+
+                int offset = (y * stride) + (x * 4);
+                if (bytes[offset + 3] < 8)
+                    return;
+
+                samples.Add(new ColorSample(bytes[offset + 2], bytes[offset + 1], bytes[offset]));
+            }
+        }
+
         private struct ColorSample
         {
             public readonly int R;
@@ -2496,13 +2868,17 @@ namespace CursorImeIndicator
 
         public int MaxSize { get; set; }
 
-        public bool UseBackgroundLine { get; set; }
+        public bool UseCutoutLine { get; set; }
+
+        public CutoutLineKind LineKind { get; set; }
     }
 
     internal sealed class CutoutOptionsForm : Form
     {
         private readonly CheckBox resizeCheckBox;
         private readonly CheckBox useLineCheckBox;
+        private readonly RadioButton foregroundLineRadio;
+        private readonly RadioButton backgroundLineRadio;
         private readonly NumericUpDown sizeNumeric;
 
         public CutoutOptionsForm()
@@ -2514,7 +2890,7 @@ namespace CursorImeIndicator
             ShowInTaskbar = false;
             TopMost = true;
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(320, 158);
+            ClientSize = new Size(320, 186);
 
             resizeCheckBox = new CheckBox();
             resizeCheckBox.Text = TextResources.SaveSmallCutout;
@@ -2546,17 +2922,29 @@ namespace CursorImeIndicator
             useLineCheckBox.Checked = false;
             useLineCheckBox.Location = new Point(14, 78);
             useLineCheckBox.Size = new Size(240, 24);
+            useLineCheckBox.CheckedChanged += OnLineOptionChanged;
+
+            foregroundLineRadio = new RadioButton();
+            foregroundLineRadio.Text = TextResources.ForegroundCutoutLine;
+            foregroundLineRadio.Checked = true;
+            foregroundLineRadio.Location = new Point(34, 104);
+            foregroundLineRadio.Size = new Size(132, 22);
+
+            backgroundLineRadio = new RadioButton();
+            backgroundLineRadio.Text = TextResources.BackgroundCutoutLine;
+            backgroundLineRadio.Location = new Point(174, 104);
+            backgroundLineRadio.Size = new Size(132, 22);
 
             Button okButton = new Button();
             okButton.Text = "OK";
             okButton.DialogResult = DialogResult.OK;
-            okButton.Location = new Point(150, 120);
+            okButton.Location = new Point(150, 148);
             okButton.Size = new Size(72, 26);
 
             Button cancelButton = new Button();
             cancelButton.Text = TextResources.Close;
             cancelButton.DialogResult = DialogResult.Cancel;
-            cancelButton.Location = new Point(230, 120);
+            cancelButton.Location = new Point(230, 148);
             cancelButton.Size = new Size(72, 26);
 
             AcceptButton = okButton;
@@ -2567,9 +2955,12 @@ namespace CursorImeIndicator
             Controls.Add(sizeNumeric);
             Controls.Add(pxLabel);
             Controls.Add(useLineCheckBox);
+            Controls.Add(foregroundLineRadio);
+            Controls.Add(backgroundLineRadio);
             Controls.Add(okButton);
             Controls.Add(cancelButton);
             OnResizeChanged(this, EventArgs.Empty);
+            OnLineOptionChanged(this, EventArgs.Empty);
         }
 
         public CutoutOptions Options
@@ -2580,7 +2971,8 @@ namespace CursorImeIndicator
                 {
                     ResizeEnabled = resizeCheckBox.Checked,
                     MaxSize = (int)sizeNumeric.Value,
-                    UseBackgroundLine = useLineCheckBox.Checked
+                    UseCutoutLine = useLineCheckBox.Checked,
+                    LineKind = backgroundLineRadio.Checked ? CutoutLineKind.Background : CutoutLineKind.Foreground
                 };
             }
         }
@@ -2589,15 +2981,21 @@ namespace CursorImeIndicator
         {
             sizeNumeric.Enabled = resizeCheckBox.Checked;
         }
+
+        private void OnLineOptionChanged(object sender, EventArgs e)
+        {
+            foregroundLineRadio.Enabled = useLineCheckBox.Checked;
+            backgroundLineRadio.Enabled = useLineCheckBox.Checked;
+        }
     }
 
     internal sealed class CutoutLineSelectionForm : Form
     {
         private readonly CutoutLinePreview preview;
 
-        public CutoutLineSelectionForm(string imagePath)
+        public CutoutLineSelectionForm(string imagePath, CutoutLineKind lineKind)
         {
-            Text = TextResources.CutoutLineSelection;
+            Text = lineKind == CutoutLineKind.Background ? TextResources.CutoutBackgroundLineSelection : TextResources.CutoutForegroundLineSelection;
             FormBorderStyle = FormBorderStyle.FixedToolWindow;
             MaximizeBox = false;
             MinimizeBox = false;
@@ -2607,11 +3005,11 @@ namespace CursorImeIndicator
             ClientSize = new Size(560, 628);
 
             Label hintLabel = new Label();
-            hintLabel.Text = TextResources.CutoutLineHint;
+            hintLabel.Text = lineKind == CutoutLineKind.Background ? TextResources.CutoutBackgroundLineHint : TextResources.CutoutForegroundLineHint;
             hintLabel.Location = new Point(14, 12);
             hintLabel.Size = new Size(532, 24);
 
-            preview = new CutoutLinePreview(imagePath);
+            preview = new CutoutLinePreview(imagePath, lineKind);
             preview.Location = new Point(14, 42);
             preview.Size = new Size(532, 532);
 
@@ -2670,13 +3068,15 @@ namespace CursorImeIndicator
     {
         private readonly MemoryStream stream;
         private readonly Image image;
+        private readonly CutoutLineKind lineKind;
         private readonly List<CutoutLine> lines = new List<CutoutLine>();
         private bool drawing;
         private PointF startRatio;
         private PointF currentRatio;
 
-        public CutoutLinePreview(string imagePath)
+        public CutoutLinePreview(string imagePath, CutoutLineKind lineKind)
         {
+            this.lineKind = lineKind;
             byte[] bytes = File.ReadAllBytes(imagePath);
             stream = new MemoryStream(bytes);
             image = Image.FromStream(stream);
@@ -2721,8 +3121,11 @@ namespace CursorImeIndicator
             Rectangle imageRect = GetImageRect();
             e.Graphics.DrawImage(image, imageRect);
 
+            Color lineColor = lineKind == CutoutLineKind.Background
+                ? Color.FromArgb(230, 14, 165, 233)
+                : Color.FromArgb(230, 34, 197, 94);
             using (Pen shadow = new Pen(Color.FromArgb(150, Color.White), 6))
-            using (Pen pen = new Pen(Color.FromArgb(230, 14, 165, 233), 3))
+            using (Pen pen = new Pen(lineColor, 3))
             {
                 pen.StartCap = LineCap.Round;
                 pen.EndCap = LineCap.Round;
@@ -2771,7 +3174,7 @@ namespace CursorImeIndicator
             Capture = false;
 
             if (Math.Abs(startRatio.X - currentRatio.X) > 0.004f || Math.Abs(startRatio.Y - currentRatio.Y) > 0.004f)
-                lines.Add(new CutoutLine(startRatio, currentRatio));
+                lines.Add(new CutoutLine(startRatio, currentRatio, lineKind));
 
             Invalidate();
         }

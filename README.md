@@ -122,7 +122,8 @@ Tips:
 - Right-click the tray icon and choose `이미지 폴더 열기` to open the correct folder.
 - After changing files, choose `커스텀 이미지 다시 불러오기`.
 - Choose `이미지 누끼 처리` from the tray menu to select one or more images and save transparent `*-cutout.png` copies. It samples the outer edge color to remove connected backgrounds, falls back to a centered subject mask for complex photos, and the default option shrinks large images to a lightweight 160px app-ready PNG.
-- Turn on `배경 라인으로 누끼 보정` in the cutout options to draw one or more lines over the background area before saving. The line samples are used as extra background seeds for more precise cutouts.
+- Turn on `라인으로 누끼 보정` in the cutout options to draw one or more correction lines before saving.
+- Use `피사체 라인 보호` when drawing on the face/body/legs or along the subject outline. Use `배경 라인 제거` only when drawing on the background area that should be removed.
 
 ## Size Control / 크기 조정
 
