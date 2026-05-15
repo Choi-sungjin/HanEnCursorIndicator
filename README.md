@@ -45,6 +45,7 @@ The app draws `한`, `en`, or `EN` on the mascot face at runtime, so the basic p
 ## Character Concepts
 
 See [`list/`](list/) for 13 original mascot concept images and an animated preview GIF.
+Ready-to-use 3-pose packs are in [`list/packs/`](list/packs/).
 
 ## Custom Images / 이미지 추가
 
@@ -120,6 +121,7 @@ Tips:
 - With a 9-image pack, you can include the text directly in each image and turn off `글자 표시` from the tray menu.
 - Right-click the tray icon and choose `이미지 폴더 열기` to open the correct folder.
 - After changing files, choose `커스텀 이미지 다시 불러오기`.
+- Choose `이미지 누끼 처리` from the tray menu to select one or more images and save transparent `*-cutout.png` copies.
 
 ## Size Control / 크기 조정
 

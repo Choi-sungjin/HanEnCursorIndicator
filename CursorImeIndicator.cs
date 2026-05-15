@@ -148,6 +148,7 @@ namespace CursorImeIndicator
         public const string Checking = "\uD655\uC778 \uC911";
         public const string OpenImageFolder = "\uC774\uBBF8\uC9C0 \uD3F4\uB354 \uC5F4\uAE30";
         public const string ReloadImages = "\uCEE4\uC2A4\uD140 \uC774\uBBF8\uC9C0 \uB2E4\uC2DC \uBD88\uB7EC\uC624\uAE30";
+        public const string RemoveImageBackground = "\uC774\uBBF8\uC9C0 \uB204\uB07C \uCC98\uB9AC";
         public const string SizeMenu = "\uD06C\uAE30";
         public const string DragSizeSettings = "\uB4DC\uB798\uADF8\uB85C \uD06C\uAE30 \uC870\uC815";
         public const string AdjustFaceCenter = "\uAE00\uC790 \uC704\uCE58 \uC870\uC815";
@@ -215,6 +216,7 @@ namespace CursorImeIndicator
             menu.Items.Add(stateItem);
             menu.Items.Add(new ToolStripMenuItem(TextResources.OpenImageFolder, null, OnOpenImageFolder));
             menu.Items.Add(new ToolStripMenuItem(TextResources.ReloadImages, null, OnReloadImages));
+            menu.Items.Add(new ToolStripMenuItem(TextResources.RemoveImageBackground, null, OnRemoveImageBackground));
             menu.Items.Add(sizeMenu);
             menu.Items.Add(colorMenu);
             menu.Items.Add(showLabelItem);
@@ -324,6 +326,41 @@ namespace CursorImeIndicator
         {
             Directory.CreateDirectory(assets.ImageDirectory);
             Process.Start(assets.ImageDirectory);
+        }
+
+        private void OnRemoveImageBackground(object sender, EventArgs e)
+        {
+            Directory.CreateDirectory(assets.ImageDirectory);
+
+            using (OpenFileDialog dialog = new OpenFileDialog())
+            {
+                dialog.Title = TextResources.RemoveImageBackground;
+                dialog.InitialDirectory = assets.ImageDirectory;
+                dialog.Multiselect = true;
+                dialog.Filter = "Image files|*.png;*.jpg;*.jpeg;*.bmp;*.gif|All files|*.*";
+                if (dialog.ShowDialog() != DialogResult.OK)
+                    return;
+
+                int saved = 0;
+                int failed = 0;
+                foreach (string path in dialog.FileNames)
+                {
+                    try
+                    {
+                        string outputPath = BackgroundRemover.GetOutputPath(path);
+                        BackgroundRemover.SaveTransparentCopy(path, outputPath);
+                        saved++;
+                    }
+                    catch
+                    {
+                        failed++;
+                    }
+                }
+
+                assets.Reload();
+                indicatorForm.RefreshAssets();
+                ShowBackgroundRemovalResult(saved, failed);
+            }
         }
 
         private void OnSizePresetClick(object sender, EventArgs e)
@@ -486,6 +523,15 @@ namespace CursorImeIndicator
                 ? "Loaded " + assets.LoadedCount + " custom image(s)."
                 : "No custom images found. Put idle.png, point.png, cheer.png, or state-pose images in the images folder.";
             trayIcon.ShowBalloonTip(2500);
+        }
+
+        private void ShowBackgroundRemovalResult(int saved, int failed)
+        {
+            trayIcon.BalloonTipTitle = TextResources.RemoveImageBackground;
+            trayIcon.BalloonTipText = failed == 0
+                ? "Saved " + saved + " transparent image(s)."
+                : "Saved " + saved + " transparent image(s), failed " + failed + ".";
+            trayIcon.ShowBalloonTip(3000);
         }
 
         protected override void Dispose(bool disposing)
@@ -1243,6 +1289,202 @@ namespace CursorImeIndicator
             if (value > 255)
                 return 255;
             return value;
+        }
+    }
+
+    internal static class BackgroundRemover
+    {
+        public static string GetOutputPath(string inputPath)
+        {
+            string directory = Path.GetDirectoryName(inputPath);
+            string name = Path.GetFileNameWithoutExtension(inputPath);
+            string outputPath = Path.Combine(directory, name + "-cutout.png");
+            int index = 2;
+
+            while (File.Exists(outputPath))
+            {
+                outputPath = Path.Combine(directory, name + "-cutout-" + index + ".png");
+                index++;
+            }
+
+            return outputPath;
+        }
+
+        public static void SaveTransparentCopy(string inputPath, string outputPath)
+        {
+            using (Bitmap bitmap = LoadArgbBitmap(inputPath))
+            {
+                RemoveEdgeBackground(bitmap);
+                bitmap.Save(outputPath, ImageFormat.Png);
+            }
+        }
+
+        private static Bitmap LoadArgbBitmap(string path)
+        {
+            using (Image source = Image.FromFile(path))
+            {
+                Bitmap bitmap = new Bitmap(source.Width, source.Height, PixelFormat.Format32bppArgb);
+                using (Graphics graphics = Graphics.FromImage(bitmap))
+                {
+                    graphics.CompositingMode = CompositingMode.SourceCopy;
+                    graphics.DrawImage(source, 0, 0, source.Width, source.Height);
+                }
+
+                return bitmap;
+            }
+        }
+
+        private static void RemoveEdgeBackground(Bitmap bitmap)
+        {
+            int width = bitmap.Width;
+            int height = bitmap.Height;
+            Rectangle rect = new Rectangle(0, 0, width, height);
+            BitmapData data = bitmap.LockBits(rect, ImageLockMode.ReadWrite, PixelFormat.Format32bppArgb);
+
+            try
+            {
+                int stride = data.Stride;
+                byte[] bytes = new byte[Math.Abs(stride) * height];
+                Marshal.Copy(data.Scan0, bytes, 0, bytes.Length);
+
+                bool[] background = FindConnectedBackground(bytes, width, height, stride);
+                for (int p = 0; p < background.Length; p++)
+                {
+                    if (!background[p])
+                        continue;
+
+                    int x = p % width;
+                    int y = p / width;
+                    int offset = (y * stride) + (x * 4);
+                    bytes[offset + 3] = 0;
+                }
+
+                SoftenWhiteHalo(bytes, background, width, height, stride);
+                Marshal.Copy(bytes, 0, data.Scan0, bytes.Length);
+            }
+            finally
+            {
+                bitmap.UnlockBits(data);
+            }
+        }
+
+        private static bool[] FindConnectedBackground(byte[] bytes, int width, int height, int stride)
+        {
+            bool[] background = new bool[width * height];
+            int[] queue = new int[width * height];
+            int head = 0;
+            int tail = 0;
+
+            AddSeed(bytes, background, queue, ref tail, width, height, stride, 0, 0);
+            AddSeed(bytes, background, queue, ref tail, width, height, stride, width - 1, 0);
+            AddSeed(bytes, background, queue, ref tail, width, height, stride, 0, height - 1);
+            AddSeed(bytes, background, queue, ref tail, width, height, stride, width - 1, height - 1);
+
+            for (int x = 0; x < width; x++)
+            {
+                AddSeed(bytes, background, queue, ref tail, width, height, stride, x, 0);
+                AddSeed(bytes, background, queue, ref tail, width, height, stride, x, height - 1);
+            }
+
+            for (int y = 0; y < height; y++)
+            {
+                AddSeed(bytes, background, queue, ref tail, width, height, stride, 0, y);
+                AddSeed(bytes, background, queue, ref tail, width, height, stride, width - 1, y);
+            }
+
+            while (head < tail)
+            {
+                int p = queue[head++];
+                int x = p % width;
+                int y = p / width;
+
+                AddSeed(bytes, background, queue, ref tail, width, height, stride, x - 1, y);
+                AddSeed(bytes, background, queue, ref tail, width, height, stride, x + 1, y);
+                AddSeed(bytes, background, queue, ref tail, width, height, stride, x, y - 1);
+                AddSeed(bytes, background, queue, ref tail, width, height, stride, x, y + 1);
+            }
+
+            return background;
+        }
+
+        private static void AddSeed(byte[] bytes, bool[] background, int[] queue, ref int tail, int width, int height, int stride, int x, int y)
+        {
+            if (x < 0 || y < 0 || x >= width || y >= height)
+                return;
+
+            int p = (y * width) + x;
+            if (background[p])
+                return;
+
+            int offset = (y * stride) + (x * 4);
+            if (!IsBackgroundPixel(bytes, offset))
+                return;
+
+            background[p] = true;
+            queue[tail] = p;
+            tail++;
+        }
+
+        private static bool IsBackgroundPixel(byte[] bytes, int offset)
+        {
+            int b = bytes[offset];
+            int g = bytes[offset + 1];
+            int r = bytes[offset + 2];
+            int a = bytes[offset + 3];
+
+            if (a < 8)
+                return true;
+
+            int max = Math.Max(r, Math.Max(g, b));
+            int min = Math.Min(r, Math.Min(g, b));
+            double average = (r + g + b) / 3.0d;
+            double saturation = max == 0 ? 0.0d : (max - min) / (double)max;
+
+            if (r > 238 && g > 238 && b > 238)
+                return true;
+
+            return average > 188.0d && saturation < 0.16d;
+        }
+
+        private static void SoftenWhiteHalo(byte[] bytes, bool[] background, int width, int height, int stride)
+        {
+            Dictionary<int, byte> updates = new Dictionary<int, byte>();
+            for (int y = 1; y < height - 1; y++)
+            {
+                for (int x = 1; x < width - 1; x++)
+                {
+                    int p = (y * width) + x;
+                    if (background[p])
+                        continue;
+
+                    bool touchesBackground = background[p - 1] || background[p + 1] || background[p - width] || background[p + width];
+                    if (!touchesBackground)
+                        continue;
+
+                    int offset = (y * stride) + (x * 4);
+                    if (IsSoftWhiteHalo(bytes, offset))
+                        updates[offset + 3] = 120;
+                }
+            }
+
+            foreach (KeyValuePair<int, byte> update in updates)
+            {
+                if (bytes[update.Key] > update.Value)
+                    bytes[update.Key] = update.Value;
+            }
+        }
+
+        private static bool IsSoftWhiteHalo(byte[] bytes, int offset)
+        {
+            int b = bytes[offset];
+            int g = bytes[offset + 1];
+            int r = bytes[offset + 2];
+            int max = Math.Max(r, Math.Max(g, b));
+            int min = Math.Min(r, Math.Min(g, b));
+            double average = (r + g + b) / 3.0d;
+            double saturation = max == 0 ? 0.0d : (max - min) / (double)max;
+
+            return average > 220.0d && saturation < 0.20d;
         }
     }
 
