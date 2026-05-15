@@ -30,4 +30,4 @@ Copy one folder's three PNG files into the app `images/` folder next to `HanEnCu
 - `12-sticker-face-mascot`
 - `13-neon-cyber-assistant`
 
-All pose PNG files are transparent-background images sized for the cursor indicator.
+All pose PNG files are lightweight `160x160` transparent-background images sized for the cursor indicator.

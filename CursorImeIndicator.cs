@@ -6,6 +6,7 @@ using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Globalization;
 using System.IO;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows.Forms;
@@ -149,6 +150,8 @@ namespace CursorImeIndicator
         public const string OpenImageFolder = "\uC774\uBBF8\uC9C0 \uD3F4\uB354 \uC5F4\uAE30";
         public const string ReloadImages = "\uCEE4\uC2A4\uD140 \uC774\uBBF8\uC9C0 \uB2E4\uC2DC \uBD88\uB7EC\uC624\uAE30";
         public const string RemoveImageBackground = "\uC774\uBBF8\uC9C0 \uB204\uB07C \uCC98\uB9AC";
+        public const string SaveSmallCutout = "\uC791\uAC8C \uC800\uC7A5";
+        public const string MaxImageSize = "\uCD5C\uB300 \uD06C\uAE30";
         public const string SizeMenu = "\uD06C\uAE30";
         public const string DragSizeSettings = "\uB4DC\uB798\uADF8\uB85C \uD06C\uAE30 \uC870\uC815";
         public const string AdjustFaceCenter = "\uAE00\uC790 \uC704\uCE58 \uC870\uC815";
@@ -341,6 +344,15 @@ namespace CursorImeIndicator
                 if (dialog.ShowDialog() != DialogResult.OK)
                     return;
 
+                CutoutOptions options;
+                using (CutoutOptionsForm optionsForm = new CutoutOptionsForm())
+                {
+                    if (optionsForm.ShowDialog() != DialogResult.OK)
+                        return;
+
+                    options = optionsForm.Options;
+                }
+
                 int saved = 0;
                 int failed = 0;
                 foreach (string path in dialog.FileNames)
@@ -348,7 +360,7 @@ namespace CursorImeIndicator
                     try
                     {
                         string outputPath = BackgroundRemover.GetOutputPath(path);
-                        BackgroundRemover.SaveTransparentCopy(path, outputPath);
+                        BackgroundRemover.SaveTransparentCopy(path, outputPath, options.ResizeEnabled ? options.MaxSize : 0);
                         saved++;
                     }
                     catch
@@ -567,6 +579,7 @@ namespace CursorImeIndicator
 
         private readonly IndicatorAssets assets;
         private readonly AppSettings settings;
+        private readonly TintedImageCache tintedImageCache = new TintedImageCache();
         private readonly Font textFont;
         private string indicatorText = Labels.Korean;
         private int sizePercent;
@@ -630,6 +643,7 @@ namespace CursorImeIndicator
 
         public void RefreshAssets()
         {
+            tintedImageCache.Clear();
             ApplyDesiredSize();
             stateChangedAtUtc = DateTime.UtcNow;
             currentPose = IndicatorPose.Point;
@@ -638,11 +652,13 @@ namespace CursorImeIndicator
 
         public void RefreshFaceCenter()
         {
+            tintedImageCache.Clear();
             Invalidate();
         }
 
         public void RefreshColors()
         {
+            tintedImageCache.Clear();
             Invalidate();
         }
 
@@ -725,8 +741,13 @@ namespace CursorImeIndicator
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing && textFont != null)
-                textFont.Dispose();
+            if (disposing)
+            {
+                if (textFont != null)
+                    textFont.Dispose();
+                if (tintedImageCache != null)
+                    tintedImageCache.Dispose();
+            }
 
             base.Dispose(disposing);
         }
@@ -815,10 +836,8 @@ namespace CursorImeIndicator
             if (mascotImage)
             {
                 Color tint = settings.GetMascotColor(indicatorText);
-                using (Bitmap tinted = MascotColorizer.CreateTintedBitmap(image, tint, settings.GetLabelCenter(indicatorText, currentPose)))
-                {
-                    graphics.DrawImage(tinted, rect);
-                }
+                Bitmap tinted = tintedImageCache.Get(image, tint, settings.GetLabelCenter(indicatorText, currentPose));
+                graphics.DrawImage(tinted, rect);
             }
             else
             {
@@ -908,6 +927,41 @@ namespace CursorImeIndicator
             path.CloseFigure();
 
             return path;
+        }
+    }
+
+    internal sealed class TintedImageCache : IDisposable
+    {
+        private readonly Dictionary<string, Bitmap> cache = new Dictionary<string, Bitmap>(StringComparer.Ordinal);
+
+        public Bitmap Get(Image image, Color tint, PointF labelCenter)
+        {
+            string key = RuntimeHelpers.GetHashCode(image).ToString(CultureInfo.InvariantCulture)
+                + "|" + tint.ToArgb().ToString(CultureInfo.InvariantCulture)
+                + "|" + labelCenter.X.ToString("0.###", CultureInfo.InvariantCulture)
+                + "," + labelCenter.Y.ToString("0.###", CultureInfo.InvariantCulture);
+
+            Bitmap bitmap;
+            if (!cache.TryGetValue(key, out bitmap))
+            {
+                bitmap = MascotColorizer.CreateTintedBitmap(image, tint, labelCenter);
+                cache[key] = bitmap;
+            }
+
+            return bitmap;
+        }
+
+        public void Clear()
+        {
+            foreach (Bitmap bitmap in cache.Values)
+                bitmap.Dispose();
+
+            cache.Clear();
+        }
+
+        public void Dispose()
+        {
+            Clear();
         }
     }
 
@@ -1312,10 +1366,23 @@ namespace CursorImeIndicator
 
         public static void SaveTransparentCopy(string inputPath, string outputPath)
         {
+            SaveTransparentCopy(inputPath, outputPath, 0);
+        }
+
+        public static void SaveTransparentCopy(string inputPath, string outputPath, int maxSize)
+        {
             using (Bitmap bitmap = LoadArgbBitmap(inputPath))
             {
                 RemoveEdgeBackground(bitmap);
-                bitmap.Save(outputPath, ImageFormat.Png);
+                if (maxSize > 0)
+                {
+                    using (Bitmap resized = CreateResizedCutout(bitmap, maxSize))
+                        resized.Save(outputPath, ImageFormat.Png);
+                }
+                else
+                {
+                    bitmap.Save(outputPath, ImageFormat.Png);
+                }
             }
         }
 
@@ -1366,6 +1433,68 @@ namespace CursorImeIndicator
             {
                 bitmap.UnlockBits(data);
             }
+        }
+
+        private static Bitmap CreateResizedCutout(Bitmap source, int maxSize)
+        {
+            int targetSize = Math.Max(32, Math.Min(1024, maxSize));
+            Rectangle bounds = GetAlphaBounds(source);
+            Bitmap target = new Bitmap(targetSize, targetSize, PixelFormat.Format32bppArgb);
+
+            using (Graphics graphics = Graphics.FromImage(target))
+            {
+                graphics.Clear(Color.Transparent);
+                graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
+
+                float padding = Math.Max(2.0f, targetSize * 0.03f);
+                float maxWidth = targetSize - (padding * 2.0f);
+                float maxHeight = targetSize - (padding * 2.0f);
+                float scale = Math.Min(maxWidth / Math.Max(1, bounds.Width), maxHeight / Math.Max(1, bounds.Height));
+                float width = bounds.Width * scale;
+                float height = bounds.Height * scale;
+                RectangleF dest = new RectangleF(
+                    (targetSize - width) / 2.0f,
+                    (targetSize - height) / 2.0f,
+                    width,
+                    height);
+
+                graphics.DrawImage(source, dest, bounds, GraphicsUnit.Pixel);
+            }
+
+            return target;
+        }
+
+        private static Rectangle GetAlphaBounds(Bitmap bitmap)
+        {
+            int left = bitmap.Width;
+            int top = bitmap.Height;
+            int right = -1;
+            int bottom = -1;
+
+            for (int y = 0; y < bitmap.Height; y++)
+            {
+                for (int x = 0; x < bitmap.Width; x++)
+                {
+                    if (bitmap.GetPixel(x, y).A <= 12)
+                        continue;
+
+                    if (x < left)
+                        left = x;
+                    if (y < top)
+                        top = y;
+                    if (x > right)
+                        right = x;
+                    if (y > bottom)
+                        bottom = y;
+                }
+            }
+
+            if (right < left || bottom < top)
+                return new Rectangle(0, 0, bitmap.Width, bitmap.Height);
+
+            return Rectangle.FromLTRB(left, top, right + 1, bottom + 1);
         }
 
         private static bool[] FindConnectedBackground(byte[] bytes, int width, int height, int stride)
@@ -1485,6 +1614,96 @@ namespace CursorImeIndicator
             double saturation = max == 0 ? 0.0d : (max - min) / (double)max;
 
             return average > 220.0d && saturation < 0.20d;
+        }
+    }
+
+    internal sealed class CutoutOptions
+    {
+        public bool ResizeEnabled { get; set; }
+
+        public int MaxSize { get; set; }
+    }
+
+    internal sealed class CutoutOptionsForm : Form
+    {
+        private readonly CheckBox resizeCheckBox;
+        private readonly NumericUpDown sizeNumeric;
+
+        public CutoutOptionsForm()
+        {
+            Text = TextResources.RemoveImageBackground;
+            FormBorderStyle = FormBorderStyle.FixedToolWindow;
+            MaximizeBox = false;
+            MinimizeBox = false;
+            ShowInTaskbar = false;
+            TopMost = true;
+            StartPosition = FormStartPosition.CenterScreen;
+            ClientSize = new Size(320, 126);
+
+            resizeCheckBox = new CheckBox();
+            resizeCheckBox.Text = TextResources.SaveSmallCutout;
+            resizeCheckBox.Checked = true;
+            resizeCheckBox.Location = new Point(14, 14);
+            resizeCheckBox.Size = new Size(180, 24);
+            resizeCheckBox.CheckedChanged += OnResizeChanged;
+
+            Label sizeLabel = new Label();
+            sizeLabel.Text = TextResources.MaxImageSize;
+            sizeLabel.Location = new Point(34, 48);
+            sizeLabel.Size = new Size(88, 22);
+
+            sizeNumeric = new NumericUpDown();
+            sizeNumeric.Minimum = 64;
+            sizeNumeric.Maximum = 512;
+            sizeNumeric.Increment = 16;
+            sizeNumeric.Value = 160;
+            sizeNumeric.Location = new Point(130, 46);
+            sizeNumeric.Size = new Size(80, 24);
+
+            Label pxLabel = new Label();
+            pxLabel.Text = "px";
+            pxLabel.Location = new Point(216, 48);
+            pxLabel.Size = new Size(34, 22);
+
+            Button okButton = new Button();
+            okButton.Text = "OK";
+            okButton.DialogResult = DialogResult.OK;
+            okButton.Location = new Point(150, 88);
+            okButton.Size = new Size(72, 26);
+
+            Button cancelButton = new Button();
+            cancelButton.Text = TextResources.Close;
+            cancelButton.DialogResult = DialogResult.Cancel;
+            cancelButton.Location = new Point(230, 88);
+            cancelButton.Size = new Size(72, 26);
+
+            AcceptButton = okButton;
+            CancelButton = cancelButton;
+
+            Controls.Add(resizeCheckBox);
+            Controls.Add(sizeLabel);
+            Controls.Add(sizeNumeric);
+            Controls.Add(pxLabel);
+            Controls.Add(okButton);
+            Controls.Add(cancelButton);
+            OnResizeChanged(this, EventArgs.Empty);
+        }
+
+        public CutoutOptions Options
+        {
+            get
+            {
+                return new CutoutOptions
+                {
+                    ResizeEnabled = resizeCheckBox.Checked,
+                    MaxSize = (int)sizeNumeric.Value
+                };
+            }
+        }
+
+        private void OnResizeChanged(object sender, EventArgs e)
+        {
+            sizeNumeric.Enabled = resizeCheckBox.Checked;
         }
     }
 
