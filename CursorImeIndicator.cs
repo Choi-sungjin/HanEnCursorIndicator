@@ -170,11 +170,11 @@ namespace CursorImeIndicator
         public const string EnglishLowerLabelColor = "\uC601\uC5B4 \uC18C\uBB38\uC790 \uAE00\uC528 \uC0C9\uC0C1";
         public const string EnglishUpperLabelColor = "\uC601\uC5B4 \uB300\uBB38\uC790 \uAE00\uC528 \uC0C9\uC0C1";
         public const string UseCutoutLine = "\uB77C\uC778\uC73C\uB85C \uB204\uB07C \uBCF4\uC815";
-        public const string ForegroundCutoutLine = "\uD53C\uC0AC\uCCB4 \uB77C\uC778 \uBCF4\uD638";
+        public const string ForegroundCutoutLine = "\uC724\uACFD \uC548\uCABD\uB9CC \uB0A8\uAE30\uAE30";
         public const string BackgroundCutoutLine = "\uBC30\uACBD \uB77C\uC778 \uC81C\uAC70";
-        public const string CutoutForegroundLineSelection = "\uD53C\uC0AC\uCCB4 \uBCF4\uD638 \uB77C\uC778 \uC120\uD0DD";
+        public const string CutoutForegroundLineSelection = "\uD53C\uC0AC\uCCB4 \uC724\uACFD \uC120\uD0DD";
         public const string CutoutBackgroundLineSelection = "\uBC30\uACBD \uC81C\uAC70 \uB77C\uC778 \uC120\uD0DD";
-        public const string CutoutForegroundLineHint = "\uBCF4\uC874\uD560 \uC5BC\uAD74/\uBAB8/\uB2E4\uB9AC \uC704\uB098 \uC724\uACFD\uC5D0 \uC120\uC744 \uADF8\uB9B0 \uB4A4 OK\uB97C \uB204\uB974\uC138\uC694.";
+        public const string CutoutForegroundLineHint = "\uD53C\uC0AC\uCCB4 \uBC14\uAE65 \uC724\uACFD\uC744 \uD55C \uBC14\uD034 \uB458\uB7EC \uADF8\uB9AC\uBA74 \uADF8 \uC548\uCABD\uB9CC \uB0A8\uAE41\uB2C8\uB2E4.";
         public const string CutoutBackgroundLineHint = "\uBC30\uACBD\uC73C\uB85C \uC9C0\uC6B8 \uC601\uC5ED\uC5D0 \uC120\uC744 \uADF8\uB9B0 \uB4A4 OK\uB97C \uB204\uB974\uC138\uC694.";
         public const string Undo = "\uB418\uB3CC\uB9AC\uAE30";
         public const string Clear = "\uCD08\uAE30\uD654";
@@ -1755,8 +1755,11 @@ namespace CursorImeIndicator
 
                 if (foregroundLines.Count > 0)
                 {
-                    ApplyForegroundLineCropFallback(bytes, background, width, height, stride, foregroundLines);
-                    ProtectForegroundLines(bytes, background, width, height, stride, foregroundLines);
+                    if (!ApplyForegroundOutlineMask(background, width, height, foregroundLines))
+                    {
+                        ApplyForegroundLineCropFallback(bytes, background, width, height, stride, foregroundLines);
+                        ProtectForegroundLines(bytes, background, width, height, stride, foregroundLines);
+                    }
                 }
                 else
                 {
@@ -1781,6 +1784,28 @@ namespace CursorImeIndicator
             {
                 bitmap.UnlockBits(data);
             }
+        }
+
+        private static bool ApplyForegroundOutlineMask(bool[] background, int width, int height, IList<CutoutLine> foregroundLines)
+        {
+            List<Point> polygon = BuildOutlinePolygon(foregroundLines, width, height);
+            if (polygon.Count < 3)
+                return false;
+
+            double area = Math.Abs(GetPolygonArea(polygon));
+            if (area < width * height * 0.002d)
+                return false;
+
+            if (area > width * height * 0.90d)
+                return false;
+
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                    background[(y * width) + x] = !IsPointInsidePolygon(x + 0.5d, y + 0.5d, polygon);
+            }
+
+            return true;
         }
 
         private static void ApplySubjectCropFallback(byte[] bytes, bool[] background, int width, int height, int stride)
@@ -2619,6 +2644,96 @@ namespace CursorImeIndicator
             return Rectangle.FromLTRB(left, top, right, bottom);
         }
 
+        private static List<Point> BuildOutlinePolygon(IList<CutoutLine> lines, int width, int height)
+        {
+            List<Point> points = new List<Point>();
+            if (lines == null)
+                return points;
+
+            foreach (CutoutLine line in lines)
+            {
+                if (line == null)
+                    continue;
+
+                Point start = new Point(RatioToPixel(line.Start.X, width), RatioToPixel(line.Start.Y, height));
+                Point end = new Point(RatioToPixel(line.End.X, width), RatioToPixel(line.End.Y, height));
+                if (points.Count == 0)
+                {
+                    points.Add(start);
+                    points.Add(end);
+                    continue;
+                }
+
+                Point previous = points[points.Count - 1];
+                if (DistanceSquared(previous, start) > DistanceSquared(previous, end))
+                {
+                    Point temp = start;
+                    start = end;
+                    end = temp;
+                }
+
+                if (DistanceSquared(points[points.Count - 1], start) > 9)
+                    points.Add(start);
+
+                if (DistanceSquared(points[points.Count - 1], end) > 2)
+                    points.Add(end);
+            }
+
+            RemoveNearlyDuplicatePoints(points);
+            return points;
+        }
+
+        private static void RemoveNearlyDuplicatePoints(List<Point> points)
+        {
+            for (int i = points.Count - 1; i > 0; i--)
+            {
+                if (DistanceSquared(points[i], points[i - 1]) <= 2)
+                    points.RemoveAt(i);
+            }
+
+            if (points.Count > 2 && DistanceSquared(points[0], points[points.Count - 1]) <= 2)
+                points.RemoveAt(points.Count - 1);
+        }
+
+        private static int DistanceSquared(Point a, Point b)
+        {
+            int dx = a.X - b.X;
+            int dy = a.Y - b.Y;
+            return (dx * dx) + (dy * dy);
+        }
+
+        private static double GetPolygonArea(IList<Point> polygon)
+        {
+            double area = 0.0d;
+            for (int i = 0; i < polygon.Count; i++)
+            {
+                Point a = polygon[i];
+                Point b = polygon[(i + 1) % polygon.Count];
+                area += (a.X * b.Y) - (b.X * a.Y);
+            }
+
+            return area / 2.0d;
+        }
+
+        private static bool IsPointInsidePolygon(double x, double y, IList<Point> polygon)
+        {
+            bool inside = false;
+            int j = polygon.Count - 1;
+            for (int i = 0; i < polygon.Count; i++)
+            {
+                Point pi = polygon[i];
+                Point pj = polygon[j];
+                bool crosses = ((pi.Y > y) != (pj.Y > y))
+                    && (x < ((pj.X - pi.X) * (y - pi.Y) / (double)(pj.Y - pi.Y)) + pi.X);
+                if (crosses)
+                    inside = !inside;
+
+                j = i;
+            }
+
+            return inside;
+        }
+
         private static float ClampRatio(float value)
         {
             if (value < 0.0f)
@@ -3070,8 +3185,9 @@ namespace CursorImeIndicator
         private readonly Image image;
         private readonly CutoutLineKind lineKind;
         private readonly List<CutoutLine> lines = new List<CutoutLine>();
+        private readonly List<int> strokeStartIndexes = new List<int>();
         private bool drawing;
-        private PointF startRatio;
+        private PointF lastRatio;
         private PointF currentRatio;
 
         public CutoutLinePreview(string imagePath, CutoutLineKind lineKind)
@@ -3094,13 +3210,21 @@ namespace CursorImeIndicator
             if (lines.Count == 0)
                 return;
 
-            lines.RemoveAt(lines.Count - 1);
+            int startIndex = strokeStartIndexes.Count > 0 ? strokeStartIndexes[strokeStartIndexes.Count - 1] : lines.Count - 1;
+            if (startIndex < 0 || startIndex >= lines.Count)
+                startIndex = lines.Count - 1;
+
+            lines.RemoveRange(startIndex, lines.Count - startIndex);
+            if (strokeStartIndexes.Count > 0)
+                strokeStartIndexes.RemoveAt(strokeStartIndexes.Count - 1);
+
             Invalidate();
         }
 
         public void ClearLines()
         {
             lines.Clear();
+            strokeStartIndexes.Clear();
             Invalidate();
         }
 
@@ -3121,6 +3245,9 @@ namespace CursorImeIndicator
             Rectangle imageRect = GetImageRect();
             e.Graphics.DrawImage(image, imageRect);
 
+            if (lineKind == CutoutLineKind.Foreground)
+                DrawForegroundPreviewFill(e.Graphics, imageRect);
+
             Color lineColor = lineKind == CutoutLineKind.Background
                 ? Color.FromArgb(230, 14, 165, 233)
                 : Color.FromArgb(230, 34, 197, 94);
@@ -3136,7 +3263,7 @@ namespace CursorImeIndicator
                     DrawLine(e.Graphics, imageRect, line.Start, line.End, shadow, pen);
 
                 if (drawing)
-                    DrawLine(e.Graphics, imageRect, startRatio, currentRatio, shadow, pen);
+                    DrawLine(e.Graphics, imageRect, lastRatio, currentRatio, shadow, pen);
             }
         }
 
@@ -3146,8 +3273,9 @@ namespace CursorImeIndicator
             if (e.Button != MouseButtons.Left)
                 return;
 
-            startRatio = PointToRatio(e.Location);
-            currentRatio = startRatio;
+            lastRatio = PointToRatio(e.Location);
+            currentRatio = lastRatio;
+            strokeStartIndexes.Add(lines.Count);
             drawing = true;
             Capture = true;
             Invalidate();
@@ -3159,7 +3287,14 @@ namespace CursorImeIndicator
             if (!drawing)
                 return;
 
-            currentRatio = PointToRatio(e.Location);
+            PointF nextRatio = PointToRatio(e.Location);
+            if (ShouldAddSegment(lastRatio, nextRatio))
+            {
+                lines.Add(new CutoutLine(lastRatio, nextRatio, lineKind));
+                lastRatio = nextRatio;
+            }
+
+            currentRatio = nextRatio;
             Invalidate();
         }
 
@@ -3173,8 +3308,11 @@ namespace CursorImeIndicator
             drawing = false;
             Capture = false;
 
-            if (Math.Abs(startRatio.X - currentRatio.X) > 0.004f || Math.Abs(startRatio.Y - currentRatio.Y) > 0.004f)
-                lines.Add(new CutoutLine(startRatio, currentRatio, lineKind));
+            if (ShouldAddSegment(lastRatio, currentRatio))
+                lines.Add(new CutoutLine(lastRatio, currentRatio, lineKind));
+
+            if (strokeStartIndexes.Count > 0 && strokeStartIndexes[strokeStartIndexes.Count - 1] == lines.Count)
+                strokeStartIndexes.RemoveAt(strokeStartIndexes.Count - 1);
 
             Invalidate();
         }
@@ -3198,6 +3336,66 @@ namespace CursorImeIndicator
             Point endPoint = RatioToPoint(imageRect, end);
             graphics.DrawLine(shadow, startPoint, endPoint);
             graphics.DrawLine(pen, startPoint, endPoint);
+        }
+
+        private void DrawForegroundPreviewFill(Graphics graphics, Rectangle imageRect)
+        {
+            List<Point> points = BuildPreviewPolygon(imageRect);
+            if (points.Count < 3)
+                return;
+
+            using (GraphicsPath path = new GraphicsPath())
+            using (SolidBrush fill = new SolidBrush(Color.FromArgb(42, 34, 197, 94)))
+            {
+                path.AddPolygon(points.ToArray());
+                graphics.FillPath(fill, path);
+            }
+        }
+
+        private List<Point> BuildPreviewPolygon(Rectangle imageRect)
+        {
+            List<Point> points = new List<Point>();
+            foreach (CutoutLine line in lines)
+            {
+                Point start = RatioToPoint(imageRect, line.Start);
+                Point end = RatioToPoint(imageRect, line.End);
+                if (points.Count == 0)
+                {
+                    points.Add(start);
+                    points.Add(end);
+                    continue;
+                }
+
+                Point previous = points[points.Count - 1];
+                if (GetDistanceSquared(previous, start) > GetDistanceSquared(previous, end))
+                {
+                    Point temp = start;
+                    start = end;
+                    end = temp;
+                }
+
+                if (GetDistanceSquared(points[points.Count - 1], start) > 9)
+                    points.Add(start);
+
+                if (GetDistanceSquared(points[points.Count - 1], end) > 2)
+                    points.Add(end);
+            }
+
+            return points;
+        }
+
+        private static int GetDistanceSquared(Point a, Point b)
+        {
+            int dx = a.X - b.X;
+            int dy = a.Y - b.Y;
+            return (dx * dx) + (dy * dy);
+        }
+
+        private static bool ShouldAddSegment(PointF start, PointF end)
+        {
+            float dx = start.X - end.X;
+            float dy = start.Y - end.Y;
+            return (dx * dx) + (dy * dy) > 0.000025f;
         }
 
         private Rectangle GetImageRect()
