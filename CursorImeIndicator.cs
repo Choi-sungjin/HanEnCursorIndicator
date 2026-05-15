@@ -836,7 +836,7 @@ namespace CursorImeIndicator
             if (mascotImage)
             {
                 Color tint = settings.GetMascotColor(indicatorText);
-                Bitmap tinted = tintedImageCache.Get(image, tint, settings.GetLabelCenter(indicatorText, currentPose));
+                Bitmap tinted = tintedImageCache.Get(image, tint, settings.GetFaceCenter(currentPose));
                 graphics.DrawImage(tinted, rect);
             }
             else
@@ -934,17 +934,17 @@ namespace CursorImeIndicator
     {
         private readonly Dictionary<string, Bitmap> cache = new Dictionary<string, Bitmap>(StringComparer.Ordinal);
 
-        public Bitmap Get(Image image, Color tint, PointF labelCenter)
+        public Bitmap Get(Image image, Color tint, PointF protectedFaceCenter)
         {
             string key = RuntimeHelpers.GetHashCode(image).ToString(CultureInfo.InvariantCulture)
                 + "|" + tint.ToArgb().ToString(CultureInfo.InvariantCulture)
-                + "|" + labelCenter.X.ToString("0.###", CultureInfo.InvariantCulture)
-                + "," + labelCenter.Y.ToString("0.###", CultureInfo.InvariantCulture);
+                + "|" + protectedFaceCenter.X.ToString("0.###", CultureInfo.InvariantCulture)
+                + "," + protectedFaceCenter.Y.ToString("0.###", CultureInfo.InvariantCulture);
 
             Bitmap bitmap;
             if (!cache.TryGetValue(key, out bitmap))
             {
-                bitmap = MascotColorizer.CreateTintedBitmap(image, tint, labelCenter);
+                bitmap = MascotColorizer.CreateTintedBitmap(image, tint, protectedFaceCenter);
                 cache[key] = bitmap;
             }
 
@@ -2178,7 +2178,7 @@ namespace CursorImeIndicator
             if (image != null)
             {
                 string label = IndicatorStates.ToLabel(stateKey);
-                using (Bitmap tinted = MascotColorizer.CreateTintedBitmap(image.Image, settings.GetMascotColor(label), settings.GetLabelCenterByState(stateKey, pose)))
+                using (Bitmap tinted = MascotColorizer.CreateTintedBitmap(image.Image, settings.GetMascotColor(label), settings.GetFaceCenter(pose)))
                 {
                     e.Graphics.DrawImage(tinted, imageRect);
                 }
