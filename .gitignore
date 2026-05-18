@@ -12,4 +12,16 @@ dist/*.zip
 dist/*/
 !/dist/images/
 !/dist/images/**
-!/dist/HanEnCursorIndicator.exe
+
+# Commercial builds are distributed through the website/license flow, not GitHub.
+/dist/HanEnCursorIndicator.exe
+
+# Web launch MVP
+/web/node_modules/
+/web/.next/
+/web/out/
+/web/.vercel/
+/web/tsconfig.tsbuildinfo
+/web/.env
+/web/.env.local
+/web/.env.*.local

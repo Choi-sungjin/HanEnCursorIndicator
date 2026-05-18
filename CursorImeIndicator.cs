@@ -13,6 +13,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Windows.Forms;
+using Microsoft.Win32;
 
 namespace CursorImeIndicator
 {
@@ -217,12 +218,29 @@ namespace CursorImeIndicator
         public const string VoiceNoText = "\uC77D\uC744 \uD14D\uC2A4\uD2B8\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.";
         public const string VoiceFailed = "\uC74C\uC131 \uC0DD\uC131 \uC2E4\uD328: ";
         public const string VoiceReady = "\uB4DC\uB798\uADF8\uD55C \uD14D\uC2A4\uD2B8\uB97C Supertone\uC73C\uB85C \uC77D\uC744 \uC900\uBE44\uAC00 \uB410\uC2B5\uB2C8\uB2E4.";
+        public const string LicenseMenu = "\uB77C\uC774\uC120\uC2A4";
+        public const string LicenseRegister = "\uB77C\uC774\uC120\uC2A4 \uB4F1\uB85D";
+        public const string LicenseStatus = "\uB77C\uC774\uC120\uC2A4 \uC0C1\uD0DC";
+        public const string LicenseDeactivate = "\uC774 PC \uBE44\uD65C\uC131\uD654";
+        public const string LicenseKey = "\uB77C\uC774\uC120\uC2A4 \uD0A4";
+        public const string LicenseServer = "\uC11C\uBC84 URL";
+        public const string Activate = "\uD65C\uC131\uD654";
+        public const string Deactivate = "\uBE44\uD65C\uC131\uD654";
+        public const string LicenseActivated = "\uB77C\uC774\uC120\uC2A4\uAC00 \uD65C\uC131\uD654\uB410\uC2B5\uB2C8\uB2E4.";
+        public const string LicenseActivationFailed = "\uB77C\uC774\uC120\uC2A4 \uD65C\uC131\uD654 \uC2E4\uD328: ";
+        public const string LicenseDeactivated = "\uC774 PC \uD65C\uC131\uD654\uB97C \uD574\uC81C\uD588\uC2B5\uB2C8\uB2E4.";
+        public const string LicenseMissing = "\uB4F1\uB85D\uB41C \uB77C\uC774\uC120\uC2A4\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.";
+        public const string LicenseValid = "\uD65C\uC131\uD654\uB428";
+        public const string LicenseOfflineValid = "\uC624\uD504\uB77C\uC778 \uC0AC\uC6A9 \uAC00\uB2A5";
+        public const string LicenseInvalid = "\uD65C\uC131\uD654 \uD544\uC694";
     }
 
     internal sealed class IndicatorContext : ApplicationContext
     {
         private readonly AppSettings settings;
         private readonly VoiceSettings voiceSettings;
+        private readonly LicenseSettings licenseSettings;
+        private readonly LicenseManager licenseManager;
         private readonly IndicatorAssets assets;
         private readonly IndicatorForm indicatorForm;
         private readonly System.Windows.Forms.Timer timer;
@@ -235,6 +253,7 @@ namespace CursorImeIndicator
         private readonly ToolStripMenuItem showLabelItem;
         private ToolStripMenuItem colorMenu;
         private ToolStripMenuItem useLanguageColorsItem;
+        private ToolStripMenuItem licenseMenu;
         private readonly List<ToolStripMenuItem> sizePresetItems = new List<ToolStripMenuItem>();
         private readonly SynchronizationContext uiContext;
         private Icon currentTrayIcon;
@@ -242,6 +261,7 @@ namespace CursorImeIndicator
         private FaceCenterSettingsForm faceCenterSettingsForm;
         private ImageSelectionForm imageSelectionForm;
         private VoiceSettingsForm voiceSettingsForm;
+        private LicenseRegistrationForm licenseRegistrationForm;
         private SelectionDragWatcher selectionDragWatcher;
         private bool enabled = true;
         private bool voiceBusy;
@@ -261,6 +281,8 @@ namespace CursorImeIndicator
 
             settings = AppSettings.Load();
             voiceSettings = VoiceSettings.Load();
+            licenseSettings = LicenseSettings.Load();
+            licenseManager = new LicenseManager(licenseSettings);
             assets = new IndicatorAssets();
             indicatorForm = new IndicatorForm(assets, settings);
 
@@ -276,6 +298,7 @@ namespace CursorImeIndicator
             UpdateSizeMenuChecks();
             colorMenu = CreateColorMenu();
             voiceMenu = CreateVoiceMenu();
+            licenseMenu = CreateLicenseMenu();
             showLabelItem = new ToolStripMenuItem(TextResources.ShowLabel);
             showLabelItem.CheckOnClick = true;
             showLabelItem.Checked = settings.ShowLabel;
@@ -293,6 +316,7 @@ namespace CursorImeIndicator
             menu.Items.Add(showLabelItem);
             menu.Items.Add(new ToolStripMenuItem(TextResources.AdjustFaceCenter, null, OnOpenFaceCenterSettings));
             menu.Items.Add(voiceMenu);
+            menu.Items.Add(licenseMenu);
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add(new ToolStripMenuItem(TextResources.Exit, null, OnExit));
 
@@ -310,6 +334,7 @@ namespace CursorImeIndicator
             timer.Start();
 
             UpdateVoiceWatcher();
+            ValidateLicenseInBackground(false);
         }
 
         private ToolStripMenuItem CreateSizeMenu()
@@ -367,6 +392,15 @@ namespace CursorImeIndicator
             menu.DropDownItems.Add(voiceEnabledItem);
             menu.DropDownItems.Add(new ToolStripMenuItem(TextResources.VoiceSettings, null, OnOpenVoiceSettings));
             menu.DropDownItems.Add(new ToolStripMenuItem(TextResources.VoiceTestClipboard, null, OnVoiceTestClipboard));
+            return menu;
+        }
+
+        private ToolStripMenuItem CreateLicenseMenu()
+        {
+            ToolStripMenuItem menu = new ToolStripMenuItem(TextResources.LicenseMenu);
+            menu.DropDownItems.Add(new ToolStripMenuItem(TextResources.LicenseRegister, null, OnOpenLicenseRegistration));
+            menu.DropDownItems.Add(new ToolStripMenuItem(TextResources.LicenseStatus, null, OnShowLicenseStatus));
+            menu.DropDownItems.Add(new ToolStripMenuItem(TextResources.LicenseDeactivate, null, OnDeactivateLicense));
             return menu;
         }
 
@@ -609,6 +643,108 @@ namespace CursorImeIndicator
             }
 
             SpeakSanitizedText(text, true);
+        }
+
+        private void OnOpenLicenseRegistration(object sender, EventArgs e)
+        {
+            if (licenseRegistrationForm == null || licenseRegistrationForm.IsDisposed)
+            {
+                licenseRegistrationForm = new LicenseRegistrationForm(licenseSettings, licenseManager, OnLicenseChanged);
+                licenseRegistrationForm.FormClosed += OnLicenseRegistrationFormClosed;
+            }
+
+            licenseRegistrationForm.Reload();
+            licenseRegistrationForm.Show();
+            licenseRegistrationForm.Activate();
+        }
+
+        private void OnLicenseRegistrationFormClosed(object sender, FormClosedEventArgs e)
+        {
+            licenseRegistrationForm = null;
+        }
+
+        private void OnLicenseChanged(LicenseStatus status)
+        {
+            licenseSettings.Save();
+            ShowLicenseBalloon(status.Message.Length > 0 ? status.Message : LicenseStatusText(status), 3000);
+        }
+
+        private void OnShowLicenseStatus(object sender, EventArgs e)
+        {
+            ValidateLicenseInBackground(true);
+        }
+
+        private void OnDeactivateLicense(object sender, EventArgs e)
+        {
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                LicenseStatus status;
+                try
+                {
+                    status = licenseManager.Deactivate();
+                }
+                catch (Exception ex)
+                {
+                    status = new LicenseStatus();
+                    status.State = LicenseState.Invalid;
+                    status.Message = ex.Message;
+                }
+
+                PostToUi(delegate
+                {
+                    if (licenseRegistrationForm != null && !licenseRegistrationForm.IsDisposed)
+                        licenseRegistrationForm.Reload();
+
+                    ShowLicenseBalloon(status.Message.Length > 0 ? status.Message : LicenseStatusText(status), 3500);
+                });
+            });
+        }
+
+        private void ValidateLicenseInBackground(bool showBalloon)
+        {
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                LicenseStatus status;
+                try
+                {
+                    status = licenseManager.GetStatus(true);
+                }
+                catch (Exception ex)
+                {
+                    status = new LicenseStatus();
+                    status.State = LicenseState.Invalid;
+                    status.Message = ex.Message;
+                }
+
+                if (!showBalloon && status.State == LicenseState.Missing)
+                    return;
+
+                PostToUi(delegate
+                {
+                    if (licenseRegistrationForm != null && !licenseRegistrationForm.IsDisposed)
+                        licenseRegistrationForm.Reload();
+
+                    ShowLicenseBalloon(LicenseStatusText(status), 3500);
+                });
+            });
+        }
+
+        private static string LicenseStatusText(LicenseStatus status)
+        {
+            if (status.State == LicenseState.Active)
+                return TextResources.LicenseValid + " (" + status.Detail + ")";
+            if (status.State == LicenseState.OfflineActive)
+                return TextResources.LicenseOfflineValid + " (" + status.Detail + ")";
+            if (status.State == LicenseState.Missing)
+                return TextResources.LicenseMissing;
+            return TextResources.LicenseInvalid + (status.Message.Length > 0 ? ": " + status.Message : "");
+        }
+
+        private void ShowLicenseBalloon(string text, int timeout)
+        {
+            trayIcon.BalloonTipTitle = TextResources.LicenseMenu;
+            trayIcon.BalloonTipText = text;
+            trayIcon.ShowBalloonTip(timeout);
         }
 
         private void UpdateVoiceWatcher()
@@ -882,6 +1018,8 @@ namespace CursorImeIndicator
                     imageSelectionForm.Dispose();
                 if (voiceSettingsForm != null)
                     voiceSettingsForm.Dispose();
+                if (licenseRegistrationForm != null)
+                    licenseRegistrationForm.Dispose();
                 if (selectionDragWatcher != null)
                     selectionDragWatcher.Dispose();
             }
@@ -4103,6 +4241,196 @@ namespace CursorImeIndicator
         }
     }
 
+    internal sealed class LicenseRegistrationForm : Form
+    {
+        private readonly LicenseSettings settings;
+        private readonly LicenseManager manager;
+        private readonly Action<LicenseStatus> onChanged;
+        private readonly TextBox serverBox;
+        private readonly TextBox licenseKeyBox;
+        private readonly Label statusLabel;
+        private readonly Button activateButton;
+        private readonly Button deactivateButton;
+
+        public LicenseRegistrationForm(LicenseSettings settings, LicenseManager manager, Action<LicenseStatus> onChanged)
+        {
+            this.settings = settings;
+            this.manager = manager;
+            this.onChanged = onChanged;
+
+            Text = TextResources.LicenseRegister;
+            FormBorderStyle = FormBorderStyle.FixedToolWindow;
+            MaximizeBox = false;
+            MinimizeBox = false;
+            ShowInTaskbar = false;
+            TopMost = true;
+            StartPosition = FormStartPosition.CenterScreen;
+            ClientSize = new Size(520, 214);
+
+            Label serverLabel = CreateLabel(TextResources.LicenseServer, 14, 18);
+            serverBox = new TextBox();
+            serverBox.Location = new Point(122, 16);
+            serverBox.Size = new Size(376, 22);
+
+            Label keyLabel = CreateLabel(TextResources.LicenseKey, 14, 56);
+            licenseKeyBox = new TextBox();
+            licenseKeyBox.Location = new Point(122, 54);
+            licenseKeyBox.Size = new Size(376, 22);
+
+            statusLabel = new Label();
+            statusLabel.Location = new Point(122, 86);
+            statusLabel.Size = new Size(376, 44);
+            statusLabel.AutoEllipsis = true;
+
+            activateButton = new Button();
+            activateButton.Text = TextResources.Activate;
+            activateButton.Location = new Point(250, 162);
+            activateButton.Size = new Size(78, 28);
+            activateButton.Click += OnActivateClicked;
+
+            deactivateButton = new Button();
+            deactivateButton.Text = TextResources.Deactivate;
+            deactivateButton.Location = new Point(334, 162);
+            deactivateButton.Size = new Size(78, 28);
+            deactivateButton.Click += OnDeactivateClicked;
+
+            Button closeButton = new Button();
+            closeButton.Text = TextResources.Close;
+            closeButton.Location = new Point(420, 162);
+            closeButton.Size = new Size(78, 28);
+            closeButton.Click += OnCloseClicked;
+
+            Controls.Add(serverLabel);
+            Controls.Add(serverBox);
+            Controls.Add(keyLabel);
+            Controls.Add(licenseKeyBox);
+            Controls.Add(statusLabel);
+            Controls.Add(activateButton);
+            Controls.Add(deactivateButton);
+            Controls.Add(closeButton);
+
+            Reload();
+        }
+
+        public void Reload()
+        {
+            serverBox.Text = LicenseSettings.NormalizeApiBaseUrl(settings.ApiBaseUrl);
+            licenseKeyBox.Text = "";
+            LicenseStatus status = manager.GetStatus(false);
+            statusLabel.Text = FormatStatus(status);
+            deactivateButton.Enabled = status.State != LicenseState.Missing;
+        }
+
+        private void OnActivateClicked(object sender, EventArgs e)
+        {
+            string serverUrl = serverBox.Text.Trim();
+            string licenseKey = licenseKeyBox.Text.Trim();
+            SetBusy(true);
+            statusLabel.Text = TextResources.Checking;
+
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                LicenseStatus status;
+                try
+                {
+                    status = manager.Activate(serverUrl, licenseKey);
+                }
+                catch (Exception ex)
+                {
+                    status = new LicenseStatus();
+                    status.State = LicenseState.Invalid;
+                    status.Message = ex.Message;
+                }
+
+                BeginInvokeIfAlive(delegate
+                {
+                    SetBusy(false);
+                    statusLabel.Text = FormatStatus(status);
+                    licenseKeyBox.Text = "";
+                    deactivateButton.Enabled = status.State != LicenseState.Missing;
+                    if (onChanged != null)
+                        onChanged(status);
+                });
+            });
+        }
+
+        private void OnDeactivateClicked(object sender, EventArgs e)
+        {
+            SetBusy(true);
+            statusLabel.Text = TextResources.Checking;
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                LicenseStatus status;
+                try
+                {
+                    status = manager.Deactivate();
+                }
+                catch (Exception ex)
+                {
+                    status = new LicenseStatus();
+                    status.State = LicenseState.Invalid;
+                    status.Message = ex.Message;
+                }
+
+                BeginInvokeIfAlive(delegate
+                {
+                    SetBusy(false);
+                    statusLabel.Text = FormatStatus(status);
+                    deactivateButton.Enabled = false;
+                    if (onChanged != null)
+                        onChanged(status);
+                });
+            });
+        }
+
+        private void OnCloseClicked(object sender, EventArgs e)
+        {
+            Close();
+        }
+
+        private void SetBusy(bool busy)
+        {
+            activateButton.Enabled = !busy;
+            deactivateButton.Enabled = !busy && LicenseSettings.LoadLicenseKey().Length > 0;
+            serverBox.Enabled = !busy;
+            licenseKeyBox.Enabled = !busy;
+        }
+
+        private void BeginInvokeIfAlive(Action action)
+        {
+            if (IsDisposed)
+                return;
+
+            try
+            {
+                BeginInvoke(action);
+            }
+            catch
+            {
+            }
+        }
+
+        private static string FormatStatus(LicenseStatus status)
+        {
+            if (status.State == LicenseState.Active)
+                return TextResources.LicenseValid + " - " + status.Detail;
+            if (status.State == LicenseState.OfflineActive)
+                return TextResources.LicenseOfflineValid + " - " + status.Detail;
+            if (status.State == LicenseState.Missing)
+                return TextResources.LicenseMissing;
+            return TextResources.LicenseInvalid + (status.Message.Length > 0 ? " - " + status.Message : "");
+        }
+
+        private static Label CreateLabel(string text, int x, int y)
+        {
+            Label label = new Label();
+            label.Text = text;
+            label.Location = new Point(x, y + 3);
+            label.Size = new Size(104, 20);
+            return label;
+        }
+    }
+
     internal sealed class SizeSettingsForm : Form
     {
         private readonly TrackBar trackBar;
@@ -5130,6 +5458,630 @@ namespace CursorImeIndicator
                 catch
                 {
                 }
+            }
+        }
+    }
+
+    internal enum LicenseState
+    {
+        Missing,
+        Active,
+        OfflineActive,
+        Invalid
+    }
+
+    internal sealed class LicenseStatus
+    {
+        public LicenseState State = LicenseState.Missing;
+        public string Message = "";
+        public string Detail = "";
+    }
+
+    internal sealed class LicenseTokenRecord
+    {
+        public string Token = "";
+        public DateTime LastValidatedUtc = DateTime.MinValue;
+        public DateTime OfflineUntilUtc = DateTime.MinValue;
+    }
+
+    internal sealed class LicenseSettings
+    {
+        private const string DefaultApiBaseUrl = "https://hanen-cursor-indicator.vercel.app";
+        public string ApiBaseUrl = DefaultApiBaseUrl;
+
+        public static LicenseSettings Load()
+        {
+            LicenseSettings settings = new LicenseSettings();
+            try
+            {
+                string path = GetSettingsPath();
+                if (!File.Exists(path))
+                    return settings;
+
+                string[] lines = File.ReadAllLines(path);
+                foreach (string line in lines)
+                {
+                    string[] parts = line.Split(new[] { '=' }, 2);
+                    if (parts.Length != 2)
+                        continue;
+
+                    if (parts[0].Trim().Equals("apiBaseUrl", StringComparison.OrdinalIgnoreCase))
+                        settings.ApiBaseUrl = NormalizeApiBaseUrl(parts[1].Trim());
+                }
+            }
+            catch
+            {
+            }
+
+            return settings;
+        }
+
+        public void Save()
+        {
+            try
+            {
+                string path = GetSettingsPath();
+                Directory.CreateDirectory(Path.GetDirectoryName(path));
+                File.WriteAllLines(path, new[] { "apiBaseUrl=" + NormalizeApiBaseUrl(ApiBaseUrl) });
+            }
+            catch
+            {
+            }
+        }
+
+        public static string NormalizeApiBaseUrl(string value)
+        {
+            string text = (value ?? "").Trim();
+            if (text.Length == 0)
+                text = DefaultApiBaseUrl;
+
+            while (text.EndsWith("/", StringComparison.Ordinal))
+                text = text.Substring(0, text.Length - 1);
+
+            return text;
+        }
+
+        public static string LoadLicenseKey()
+        {
+            return ReadProtectedText(GetLicenseKeyPath());
+        }
+
+        public static void SaveLicenseKey(string licenseKey)
+        {
+            WriteProtectedText(GetLicenseKeyPath(), licenseKey.Trim());
+        }
+
+        public static void ClearLicenseKey()
+        {
+            DeleteIfExists(GetLicenseKeyPath());
+        }
+
+        public static LicenseTokenRecord LoadTokenRecord()
+        {
+            LicenseTokenRecord record = new LicenseTokenRecord();
+            string text = ReadProtectedText(GetTokenPath());
+            if (text.Length == 0)
+                return record;
+
+            string[] lines = text.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+            foreach (string line in lines)
+            {
+                string[] parts = line.Split(new[] { '=' }, 2);
+                if (parts.Length != 2)
+                    continue;
+
+                string key = parts[0].Trim();
+                string value = parts[1].Trim();
+                if (key.Equals("token", StringComparison.OrdinalIgnoreCase))
+                    record.Token = value;
+                else if (key.Equals("lastValidatedUtc", StringComparison.OrdinalIgnoreCase))
+                    record.LastValidatedUtc = ParseUtc(value);
+                else if (key.Equals("offlineUntilUtc", StringComparison.OrdinalIgnoreCase))
+                    record.OfflineUntilUtc = ParseUtc(value);
+            }
+
+            return record;
+        }
+
+        public static void SaveTokenRecord(LicenseTokenRecord record)
+        {
+            StringBuilder builder = new StringBuilder();
+            builder.Append("token=").Append(record.Token ?? "").Append('\n');
+            builder.Append("lastValidatedUtc=").Append(FormatUtc(record.LastValidatedUtc)).Append('\n');
+            builder.Append("offlineUntilUtc=").Append(FormatUtc(record.OfflineUntilUtc)).Append('\n');
+            WriteProtectedText(GetTokenPath(), builder.ToString());
+        }
+
+        public static void ClearTokenRecord()
+        {
+            DeleteIfExists(GetTokenPath());
+        }
+
+        public static string MaskLicenseKey(string licenseKey)
+        {
+            string value = (licenseKey ?? "").Trim();
+            if (value.Length <= 8)
+                return value.Length == 0 ? "" : "****";
+
+            return value.Substring(0, 4) + "..." + value.Substring(value.Length - 4);
+        }
+
+        private static string ReadProtectedText(string path)
+        {
+            try
+            {
+                if (!File.Exists(path))
+                    return "";
+
+                byte[] protectedBytes = Convert.FromBase64String(File.ReadAllText(path).Trim());
+                byte[] bytes = ProtectedData.Unprotect(protectedBytes, null, DataProtectionScope.CurrentUser);
+                return Encoding.UTF8.GetString(bytes);
+            }
+            catch
+            {
+                return "";
+            }
+        }
+
+        private static void WriteProtectedText(string path, string text)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            byte[] bytes = Encoding.UTF8.GetBytes(text ?? "");
+            byte[] protectedBytes = ProtectedData.Protect(bytes, null, DataProtectionScope.CurrentUser);
+            File.WriteAllText(path, Convert.ToBase64String(protectedBytes));
+        }
+
+        private static void DeleteIfExists(string path)
+        {
+            try
+            {
+                if (File.Exists(path))
+                    File.Delete(path);
+            }
+            catch
+            {
+            }
+        }
+
+        private static DateTime ParseUtc(string text)
+        {
+            DateTime value;
+            if (DateTime.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out value))
+                return value.ToUniversalTime();
+
+            return DateTime.MinValue;
+        }
+
+        private static string FormatUtc(DateTime value)
+        {
+            if (value == DateTime.MinValue)
+                return "";
+
+            return value.ToUniversalTime().ToString("o", CultureInfo.InvariantCulture);
+        }
+
+        private static string GetSettingsPath()
+        {
+            return Path.Combine(GetSettingsDirectory(), "license.ini");
+        }
+
+        private static string GetLicenseKeyPath()
+        {
+            return Path.Combine(GetSettingsDirectory(), "license.key");
+        }
+
+        private static string GetTokenPath()
+        {
+            return Path.Combine(GetSettingsDirectory(), "license.token");
+        }
+
+        private static string GetSettingsDirectory()
+        {
+            string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            return Path.Combine(appData, "HanEnCursorIndicator");
+        }
+    }
+
+    internal sealed class LicenseManager
+    {
+        private readonly LicenseSettings settings;
+
+        public LicenseManager(LicenseSettings settings)
+        {
+            this.settings = settings;
+        }
+
+        public LicenseStatus Activate(string apiBaseUrl, string licenseKey)
+        {
+            string normalizedUrl = LicenseSettings.NormalizeApiBaseUrl(apiBaseUrl);
+            string normalizedKey = (licenseKey ?? "").Trim();
+            if (normalizedKey.Length == 0)
+                return Invalid(TextResources.LicenseMissing);
+
+            settings.ApiBaseUrl = normalizedUrl;
+            settings.Save();
+
+            LicenseApiResult result = PostJson(normalizedUrl + "/api/license/activate", BuildCommonBody(normalizedKey, ""));
+            if (!result.Ok)
+                return Invalid(result.Message);
+
+            SaveSuccessfulLicense(normalizedKey, result);
+            LicenseStatus status = new LicenseStatus();
+            status.State = LicenseState.Active;
+            status.Message = TextResources.LicenseActivated;
+            status.Detail = CreateDetail(normalizedKey, result.OfflineUntilUtc);
+            return status;
+        }
+
+        public LicenseStatus GetStatus(bool validateOnline)
+        {
+            string licenseKey = LicenseSettings.LoadLicenseKey();
+            if (licenseKey.Length == 0)
+                return Missing();
+
+            LicenseTokenRecord record = LicenseSettings.LoadTokenRecord();
+            if (validateOnline)
+            {
+                try
+                {
+                    LicenseApiResult result = PostJson(settings.ApiBaseUrl + "/api/license/validate", BuildCommonBody(licenseKey, record.Token));
+                    if (result.Ok)
+                    {
+                        SaveSuccessfulLicense(licenseKey, result);
+                        LicenseStatus active = new LicenseStatus();
+                        active.State = LicenseState.Active;
+                        active.Detail = CreateDetail(licenseKey, result.OfflineUntilUtc);
+                        return active;
+                    }
+                }
+                catch
+                {
+                }
+            }
+
+            if (record.Token.Length > 0 && DateTime.UtcNow <= record.OfflineUntilUtc)
+            {
+                LicenseStatus offline = new LicenseStatus();
+                offline.State = LicenseState.OfflineActive;
+                offline.Detail = CreateDetail(licenseKey, record.OfflineUntilUtc);
+                return offline;
+            }
+
+            return Invalid("Online validation required.");
+        }
+
+        public LicenseStatus Deactivate()
+        {
+            string licenseKey = LicenseSettings.LoadLicenseKey();
+            LicenseTokenRecord record = LicenseSettings.LoadTokenRecord();
+
+            if (licenseKey.Length == 0)
+                return Missing();
+
+            try
+            {
+                PostJson(settings.ApiBaseUrl + "/api/license/deactivate", BuildCommonBody(licenseKey, record.Token));
+            }
+            catch
+            {
+            }
+
+            LicenseSettings.ClearLicenseKey();
+            LicenseSettings.ClearTokenRecord();
+
+            LicenseStatus status = new LicenseStatus();
+            status.State = LicenseState.Missing;
+            status.Message = TextResources.LicenseDeactivated;
+            return status;
+        }
+
+        private void SaveSuccessfulLicense(string licenseKey, LicenseApiResult result)
+        {
+            LicenseSettings.SaveLicenseKey(licenseKey);
+
+            LicenseTokenRecord record = new LicenseTokenRecord();
+            record.Token = result.Token;
+            record.LastValidatedUtc = DateTime.UtcNow;
+            record.OfflineUntilUtc = result.OfflineUntilUtc == DateTime.MinValue ? DateTime.UtcNow.AddDays(14) : result.OfflineUntilUtc;
+            LicenseSettings.SaveTokenRecord(record);
+        }
+
+        private string BuildCommonBody(string licenseKey, string token)
+        {
+            StringBuilder builder = new StringBuilder();
+            builder.Append('{');
+            AppendJsonField(builder, "licenseKey", licenseKey, true);
+            AppendJsonField(builder, "machineHash", MachineIdentity.GetMachineHash(), true);
+            AppendJsonField(builder, "appVersion", Application.ProductVersion, true);
+            AppendJsonField(builder, "token", token ?? "", false);
+            builder.Append('}');
+            return builder.ToString();
+        }
+
+        private static LicenseStatus Missing()
+        {
+            LicenseStatus status = new LicenseStatus();
+            status.State = LicenseState.Missing;
+            status.Message = TextResources.LicenseMissing;
+            return status;
+        }
+
+        private static LicenseStatus Invalid(string message)
+        {
+            LicenseStatus status = new LicenseStatus();
+            status.State = LicenseState.Invalid;
+            status.Message = message ?? "";
+            return status;
+        }
+
+        private static string CreateDetail(string licenseKey, DateTime offlineUntilUtc)
+        {
+            string detail = LicenseSettings.MaskLicenseKey(licenseKey);
+            if (offlineUntilUtc != DateTime.MinValue)
+                detail += ", offline until " + offlineUntilUtc.ToLocalTime().ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+            return detail;
+        }
+
+        private static LicenseApiResult PostJson(string url, string json)
+        {
+            ServicePointManager.SecurityProtocol |= (SecurityProtocolType)3072;
+            byte[] body = Encoding.UTF8.GetBytes(json);
+
+            HttpWebRequest request = (HttpWebRequest)WebRequest.Create(url);
+            request.Method = "POST";
+            request.ContentType = "application/json; charset=utf-8";
+            request.Accept = "application/json";
+            request.Timeout = 15000;
+            request.ReadWriteTimeout = 15000;
+            request.ContentLength = body.Length;
+
+            using (Stream requestStream = request.GetRequestStream())
+            {
+                requestStream.Write(body, 0, body.Length);
+            }
+
+            try
+            {
+                using (HttpWebResponse response = (HttpWebResponse)request.GetResponse())
+                using (Stream responseStream = response.GetResponseStream())
+                using (StreamReader reader = new StreamReader(responseStream, Encoding.UTF8))
+                {
+                    return LicenseApiResult.Parse(reader.ReadToEnd());
+                }
+            }
+            catch (WebException ex)
+            {
+                string message = ReadWebException(ex);
+                LicenseApiResult parsed = LicenseApiResult.Parse(message);
+                if (parsed.Message.Length > 0)
+                    return parsed;
+
+                LicenseApiResult result = new LicenseApiResult();
+                result.Ok = false;
+                result.Message = message;
+                return result;
+            }
+        }
+
+        private static string ReadWebException(WebException ex)
+        {
+            try
+            {
+                if (ex.Response != null)
+                {
+                    using (Stream stream = ex.Response.GetResponseStream())
+                    using (StreamReader reader = new StreamReader(stream, Encoding.UTF8))
+                        return reader.ReadToEnd();
+                }
+            }
+            catch
+            {
+            }
+
+            return ex.Message;
+        }
+
+        private static void AppendJsonField(StringBuilder builder, string name, string value, bool appendComma)
+        {
+            builder.Append('"').Append(name).Append("\":\"");
+            builder.Append(EscapeJson(value ?? ""));
+            builder.Append('"');
+            if (appendComma)
+                builder.Append(',');
+        }
+
+        private static string EscapeJson(string value)
+        {
+            StringBuilder builder = new StringBuilder();
+            foreach (char c in value)
+            {
+                if (c == '\\' || c == '"')
+                    builder.Append('\\').Append(c);
+                else if (c == '\r')
+                    builder.Append("\\r");
+                else if (c == '\n')
+                    builder.Append("\\n");
+                else if (c == '\t')
+                    builder.Append("\\t");
+                else if (char.IsControl(c))
+                    builder.Append("\\u").Append(((int)c).ToString("x4", CultureInfo.InvariantCulture));
+                else
+                    builder.Append(c);
+            }
+
+            return builder.ToString();
+        }
+    }
+
+    internal sealed class LicenseApiResult
+    {
+        public bool Ok;
+        public string Message = "";
+        public string Token = "";
+        public DateTime OfflineUntilUtc = DateTime.MinValue;
+
+        public static LicenseApiResult Parse(string json)
+        {
+            LicenseApiResult result = new LicenseApiResult();
+            string text = json ?? "";
+            string ok = JsonValueReader.GetRawValue(text, "ok");
+            result.Ok = ok.Equals("true", StringComparison.OrdinalIgnoreCase);
+            if (!result.Ok)
+            {
+                string success = JsonValueReader.GetRawValue(text, "success");
+                result.Ok = success.Equals("true", StringComparison.OrdinalIgnoreCase);
+            }
+
+            result.Message = JsonValueReader.GetString(text, "message");
+            if (result.Message.Length == 0)
+                result.Message = JsonValueReader.GetString(text, "error");
+
+            result.Token = JsonValueReader.GetString(text, "token");
+            string offlineUntil = JsonValueReader.GetString(text, "offlineUntil");
+            if (offlineUntil.Length == 0)
+                offlineUntil = JsonValueReader.GetString(text, "offlineUntilUtc");
+
+            DateTime parsed;
+            if (DateTime.TryParse(offlineUntil, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out parsed))
+                result.OfflineUntilUtc = parsed.ToUniversalTime();
+
+            if (result.Ok && result.Token.Length == 0)
+                result.Ok = false;
+            if (!result.Ok && result.Message.Length == 0 && text.Length > 0 && text.Length < 240)
+                result.Message = text;
+
+            return result;
+        }
+    }
+
+    internal static class JsonValueReader
+    {
+        public static string GetString(string json, string name)
+        {
+            int index = FindProperty(json, name);
+            if (index < 0)
+                return "";
+
+            int colon = json.IndexOf(':', index);
+            if (colon < 0)
+                return "";
+
+            int quote = FindNextNonWhite(json, colon + 1);
+            if (quote < 0 || json[quote] != '"')
+                return "";
+
+            StringBuilder builder = new StringBuilder();
+            bool escape = false;
+            for (int i = quote + 1; i < json.Length; i++)
+            {
+                char c = json[i];
+                if (escape)
+                {
+                    if (c == 'n')
+                        builder.Append('\n');
+                    else if (c == 'r')
+                        builder.Append('\r');
+                    else if (c == 't')
+                        builder.Append('\t');
+                    else
+                        builder.Append(c);
+                    escape = false;
+                    continue;
+                }
+
+                if (c == '\\')
+                {
+                    escape = true;
+                    continue;
+                }
+
+                if (c == '"')
+                    break;
+
+                builder.Append(c);
+            }
+
+            return builder.ToString();
+        }
+
+        public static string GetRawValue(string json, string name)
+        {
+            int index = FindProperty(json, name);
+            if (index < 0)
+                return "";
+
+            int colon = json.IndexOf(':', index);
+            if (colon < 0)
+                return "";
+
+            int start = FindNextNonWhite(json, colon + 1);
+            if (start < 0)
+                return "";
+
+            int end = start;
+            while (end < json.Length && json[end] != ',' && json[end] != '}' && !char.IsWhiteSpace(json[end]))
+                end++;
+
+            return json.Substring(start, end - start).Trim().Trim('"');
+        }
+
+        private static int FindProperty(string json, string name)
+        {
+            if (string.IsNullOrEmpty(json) || string.IsNullOrEmpty(name))
+                return -1;
+
+            string needle = "\"" + name + "\"";
+            return json.IndexOf(needle, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static int FindNextNonWhite(string text, int start)
+        {
+            for (int i = start; i < text.Length; i++)
+            {
+                if (!char.IsWhiteSpace(text[i]))
+                    return i;
+            }
+
+            return -1;
+        }
+    }
+
+    internal static class MachineIdentity
+    {
+        public static string GetMachineHash()
+        {
+            string source = ReadMachineGuid();
+            if (source.Length == 0)
+                source = Environment.MachineName + "|" + Environment.UserName;
+
+            using (SHA256 sha = SHA256.Create())
+            {
+                byte[] hash = sha.ComputeHash(Encoding.UTF8.GetBytes(source));
+                StringBuilder builder = new StringBuilder();
+                foreach (byte b in hash)
+                    builder.Append(b.ToString("x2", CultureInfo.InvariantCulture));
+
+                return builder.ToString();
+            }
+        }
+
+        private static string ReadMachineGuid()
+        {
+            try
+            {
+                using (RegistryKey key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Cryptography"))
+                {
+                    if (key == null)
+                        return "";
+
+                    object value = key.GetValue("MachineGuid");
+                    return value == null ? "" : value.ToString();
+                }
+            }
+            catch
+            {
+                return "";
             }
         }
     }

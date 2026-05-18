@@ -5,9 +5,20 @@ Windows-only tray app that shows the current Korean/English input mode next to t
 
 ![HanEn Cursor Indicator demo](assets/demo.gif)
 
+## Commercial Launch / 수익화 출시
+
+This public repository is now treated as the product documentation, demo, issue, and launch-prep repository.
+The paid executable and production secrets are distributed through the web license flow, not through GitHub.
+
+- Web MVP: [`web/`](web/)
+- Database schema: [`web/supabase/schema.sql`](web/supabase/schema.sql)
+- Launch checklist: [`docs/commercial-launch-checklist.md`](docs/commercial-launch-checklist.md)
+- Target distribution: website checkout first, Microsoft Store second
+- First product: `Personal Lifetime`, 2 PC activations, 14-day offline grace period
+
 ## Usage Example / 사용 예시
 
-1. `dist/HanEnCursorIndicator.exe`를 실행합니다.
+1. 웹에서 받은 실행 파일 또는 로컬 개발 빌드 `CursorImeIndicator.exe`를 실행합니다.
 2. 설치 과정 없이 바로 실행되고 Windows 트레이 아이콘이 추가됩니다.
 3. 한글 입력 상태에서는 미니미 얼굴에 `한`이 표시됩니다.
 4. 영어 소문자 입력 상태에서는 `en`, 대문자 입력 상태에서는 `EN`이 표시됩니다.
@@ -16,13 +27,15 @@ Windows-only tray app that shows the current Korean/English input mode next to t
 
 ## Download
 
-Run the executable:
+The commercial build is downloaded from the official website after license verification. GitHub should not publish the paid executable.
 
-```text
-dist/HanEnCursorIndicator.exe
+For local development builds, run:
+
+```bat
+build.bat
 ```
 
-The app still works with only the exe. If `dist/images/` is included, the humanoid minimi mascot images are used automatically.
+The local build output is `CursorImeIndicator.exe`. Package that file privately for the website/Microsoft Store flow.
 
 ## Windows Support
 
@@ -184,6 +197,17 @@ Right-click the tray icon and open `보이스`.
 
 Supported model names in the settings menu follow the Supertone API docs: `sona_speech_1`, `sona_speech_2`, `sona_speech_2_flash`, `sona_speech_2t`, and `supertonic_api_1`.
 
+## License / 라이선스
+
+Right-click the tray icon and open `라이선스`.
+
+- `라이선스 등록`: enter the web license server URL and the purchased license key.
+- `라이선스 상태`: validates online when possible and falls back to the encrypted offline token.
+- `이 PC 비활성화`: frees the current PC activation.
+- License keys and offline tokens are saved per Windows user with Windows DPAPI encryption under `%APPDATA%\HanEnCursorIndicator`.
+- The Windows app contains only the public API URL and never includes Paddle, Supabase, Toss, or email service secret keys.
+- A paid license supports 2 PC activations and 14 days of offline use by default.
+
 ## Animation Effects
 
 - Input-mode changes use a subtle pop animation.
@@ -211,15 +235,15 @@ Supported model names in the settings menu follow the Supertone API docs: `sona_
 - Tray menu label color picker and background-line cutout refinement.
 - Tray menu Supertone voice settings with encrypted per-PC API key storage.
 
-## MVP Direction
+## Monetization Direction
 
-This can grow into a small Windows utility MVP with:
+The first commercial flow is:
 
-- Custom image packs
-- Startup-on-boot option
-- Simple settings UI
-- GitHub Releases download page
-- Signed executable for fewer SmartScreen warnings
+1. Customer buys a `Personal Lifetime` license through Paddle.
+2. The web app receives Paddle `transaction.completed`.
+3. The server creates a license key in Supabase.
+4. The customer uses the key to download and activate the Windows app.
+5. Microsoft Store registration is prepared after the web checkout flow is stable.
 
 ## Build
 
@@ -229,11 +253,7 @@ This project builds with the .NET Framework compiler included with Windows:
 build.bat
 ```
 
-The build output is `CursorImeIndicator.exe`. The distributable copy is stored as:
-
-```text
-dist/HanEnCursorIndicator.exe
-```
+The build output is `CursorImeIndicator.exe`. Commercial distributables are packaged outside GitHub.
 
 ## Demo GIF
 
