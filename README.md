@@ -51,6 +51,8 @@ Ready-to-use 3-pose packs are in [`list/packs/`](list/packs/).
 
 To replace the mascot, put images next to the exe. You can use either a 3-image shared pack or a 9-image state pack.
 
+Fastest path: right-click the tray icon, choose the image picker, select 3-image shared mode or 9-image state mode, choose the state/pose slot, then pick a file. The app copies it into `dist/images/` with the correct slot filename and reloads it immediately.
+
 ### 3-image shared pack
 
 Use three pose images. The app draws `한`, `en`, or `EN` on top of the same image set:
@@ -92,18 +94,21 @@ images/idle.gif
 images/idle.png
 images/idle.jpg
 images/idle.jpeg
+images/idle.jfif
 images/idle.bmp
 
 images/point.gif
 images/point.png
 images/point.jpg
 images/point.jpeg
+images/point.jfif
 images/point.bmp
 
 images/cheer.gif
 images/cheer.png
 images/cheer.jpg
 images/cheer.jpeg
+images/cheer.jfif
 images/cheer.bmp
 
 images/ko-idle.png
@@ -111,7 +116,7 @@ images/en-idle.png
 images/upper-idle.png
 ```
 
-The app searches in this order: GIF, PNG, JPG, JPEG, BMP.
+The app searches in this order: GIF, PNG, JPG, JPEG, JFIF, BMP.
 
 Tips:
 
@@ -195,8 +200,9 @@ Supported model names in the settings menu follow the Supertone API docs: `sona_
 - Shows `en` for English lowercase mode.
 - Shows `EN` for English uppercase mode, including Caps Lock / Shift state.
 - Humanoid minimi mascot with 3-image or 9-image packs.
-- Optional custom PNG/JPG/BMP/GIF images.
+- Optional custom PNG/JPG/JPEG/JFIF/BMP/GIF images.
 - Tray menu on/off toggle.
+- Tray menu image slot picker.
 - Tray menu image reload.
 - Tray menu label visibility toggle.
 - Tray menu size presets and drag slider.

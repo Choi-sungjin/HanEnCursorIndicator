@@ -151,8 +151,19 @@ namespace CursorImeIndicator
         public const string CurrentStatePrefix = "\uD604\uC7AC \uC0C1\uD0DC: ";
         public const string Checking = "\uD655\uC778 \uC911";
         public const string OpenImageFolder = "\uC774\uBBF8\uC9C0 \uD3F4\uB354 \uC5F4\uAE30";
+        public const string ChooseImage = "\uC774\uBBF8\uC9C0 \uC120\uD0DD";
         public const string ReloadImages = "\uCEE4\uC2A4\uD140 \uC774\uBBF8\uC9C0 \uB2E4\uC2DC \uBD88\uB7EC\uC624\uAE30";
         public const string RemoveImageBackground = "\uC774\uBBF8\uC9C0 \uB204\uB07C \uCC98\uB9AC";
+        public const string ImagePackMode = "\uC774\uBBF8\uC9C0 \uBAA8\uB4DC";
+        public const string SharedPoseImages = "\uACF5\uD1B5 3\uC7A5";
+        public const string StatePoseImages = "\uC0C1\uD0DC\uBCC4 9\uC7A5";
+        public const string SelectFile = "\uD30C\uC77C \uC120\uD0DD";
+        public const string RemoveSlotImage = "\uC2AC\uB86F \uBE44\uC6B0\uAE30";
+        public const string ImageSlot = "\uC2AC\uB86F";
+        public const string CurrentFile = "\uD604\uC7AC \uD30C\uC77C";
+        public const string NoImageSelected = "\uC5C6\uC74C";
+        public const string ImageInstalled = "\uC774\uBBF8\uC9C0\uB97C \uC801\uC6A9\uD588\uC2B5\uB2C8\uB2E4.";
+        public const string ImageSlotCleared = "\uC2AC\uB86F\uC744 \uBE44\uC6E0\uC2B5\uB2C8\uB2E4.";
         public const string SaveSmallCutout = "\uC791\uAC8C \uC800\uC7A5";
         public const string MaxImageSize = "\uCD5C\uB300 \uD06C\uAE30";
         public const string SizeMenu = "\uD06C\uAE30";
@@ -229,6 +240,7 @@ namespace CursorImeIndicator
         private Icon currentTrayIcon;
         private SizeSettingsForm sizeSettingsForm;
         private FaceCenterSettingsForm faceCenterSettingsForm;
+        private ImageSelectionForm imageSelectionForm;
         private VoiceSettingsForm voiceSettingsForm;
         private SelectionDragWatcher selectionDragWatcher;
         private bool enabled = true;
@@ -273,6 +285,7 @@ namespace CursorImeIndicator
             menu.Items.Add(enabledItem);
             menu.Items.Add(stateItem);
             menu.Items.Add(new ToolStripMenuItem(TextResources.OpenImageFolder, null, OnOpenImageFolder));
+            menu.Items.Add(new ToolStripMenuItem(TextResources.ChooseImage, null, OnChooseImage));
             menu.Items.Add(new ToolStripMenuItem(TextResources.ReloadImages, null, OnReloadImages));
             menu.Items.Add(new ToolStripMenuItem(TextResources.RemoveImageBackground, null, OnRemoveImageBackground));
             menu.Items.Add(sizeMenu);
@@ -409,6 +422,35 @@ namespace CursorImeIndicator
         {
             Directory.CreateDirectory(assets.ImageDirectory);
             Process.Start(assets.ImageDirectory);
+        }
+
+        private void OnChooseImage(object sender, EventArgs e)
+        {
+            if (imageSelectionForm == null || imageSelectionForm.IsDisposed)
+            {
+                imageSelectionForm = new ImageSelectionForm(assets, OnImageSelectionChanged);
+                imageSelectionForm.FormClosed += OnImageSelectionFormClosed;
+            }
+
+            imageSelectionForm.RefreshSelection();
+            imageSelectionForm.Show();
+            imageSelectionForm.Activate();
+        }
+
+        private void OnImageSelectionFormClosed(object sender, FormClosedEventArgs e)
+        {
+            imageSelectionForm = null;
+        }
+
+        private void OnImageSelectionChanged(string message)
+        {
+            assets.Reload();
+            indicatorForm.RefreshAssets();
+
+            if (faceCenterSettingsForm != null && !faceCenterSettingsForm.IsDisposed)
+                faceCenterSettingsForm.RefreshPreview();
+
+            ShowImageSelectionResult(message);
         }
 
         private void OnRemoveImageBackground(object sender, EventArgs e)
@@ -811,6 +853,13 @@ namespace CursorImeIndicator
             trayIcon.ShowBalloonTip(3000);
         }
 
+        private void ShowImageSelectionResult(string message)
+        {
+            trayIcon.BalloonTipTitle = TextResources.ChooseImage;
+            trayIcon.BalloonTipText = message;
+            trayIcon.ShowBalloonTip(2500);
+        }
+
         protected override void Dispose(bool disposing)
         {
             if (disposing)
@@ -829,6 +878,8 @@ namespace CursorImeIndicator
                     sizeSettingsForm.Dispose();
                 if (faceCenterSettingsForm != null)
                     faceCenterSettingsForm.Dispose();
+                if (imageSelectionForm != null)
+                    imageSelectionForm.Dispose();
                 if (voiceSettingsForm != null)
                     voiceSettingsForm.Dispose();
                 if (selectionDragWatcher != null)
@@ -1287,7 +1338,7 @@ namespace CursorImeIndicator
 
     internal sealed class IndicatorAssets : IDisposable
     {
-        private static readonly string[] Extensions = new[] { ".gif", ".png", ".jpg", ".jpeg", ".bmp" };
+        private static readonly string[] Extensions = new[] { ".gif", ".png", ".jpg", ".jpeg", ".jfif", ".bmp" };
         private Dictionary<IndicatorPose, IndicatorImage> poseImages = new Dictionary<IndicatorPose, IndicatorImage>();
         private Dictionary<string, IndicatorImage> statePoseImages = new Dictionary<string, IndicatorImage>(StringComparer.Ordinal);
         private Dictionary<string, IndicatorImage> legacyImages = new Dictionary<string, IndicatorImage>();
@@ -1351,6 +1402,36 @@ namespace CursorImeIndicator
             return GetStatePoseExact(stateKey, pose) != null || GetPoseExact(pose) != null;
         }
 
+        public string GetSharedPoseFileName(IndicatorPose pose)
+        {
+            return GetExistingSlotFileName(new[] { IndicatorPoseHelper.GetKey(pose) }, false);
+        }
+
+        public string GetStatePoseFileName(string stateKey, IndicatorPose pose)
+        {
+            return GetExistingSlotFileName(GetStatePoseBaseNames(stateKey, pose), true);
+        }
+
+        public void InstallSharedPoseImage(IndicatorPose pose, string sourcePath)
+        {
+            InstallSlotImage(new[] { IndicatorPoseHelper.GetKey(pose) }, false, sourcePath);
+        }
+
+        public void InstallStatePoseImage(string stateKey, IndicatorPose pose, string sourcePath)
+        {
+            InstallSlotImage(GetStatePoseBaseNames(stateKey, pose), true, sourcePath);
+        }
+
+        public void ClearSharedPoseImage(IndicatorPose pose)
+        {
+            ClearSlotImages(new[] { IndicatorPoseHelper.GetKey(pose) }, false);
+        }
+
+        public void ClearStatePoseImage(string stateKey, IndicatorPose pose)
+        {
+            ClearSlotImages(GetStatePoseBaseNames(stateKey, pose), true);
+        }
+
         public void Reload()
         {
             Dictionary<IndicatorPose, IndicatorImage> oldPoseImages = poseImages;
@@ -1395,6 +1476,82 @@ namespace CursorImeIndicator
         {
             foreach (IndicatorImage image in images)
                 image.Dispose();
+        }
+
+        private static string[] GetStatePoseBaseNames(string stateKey, IndicatorPose pose)
+        {
+            string poseKey = IndicatorPoseHelper.GetKey(pose);
+            if (stateKey == IndicatorStates.EnglishUpper)
+                return new[] { "upper-" + poseKey, "EN-" + poseKey, "caps-" + poseKey };
+
+            List<string> names = new List<string>();
+            foreach (string prefix in IndicatorStates.GetFilePrefixes(stateKey))
+                names.Add(prefix + "-" + poseKey);
+            return names.ToArray();
+        }
+
+        private string GetExistingSlotFileName(IEnumerable<string> baseNames, bool exactFileName)
+        {
+            foreach (string baseName in baseNames)
+            {
+                foreach (string extension in Extensions)
+                {
+                    string path = exactFileName
+                        ? FindExactImagePath(ImageDirectory, baseName + extension)
+                        : Path.Combine(ImageDirectory, baseName + extension);
+                    if (File.Exists(path))
+                        return Path.GetFileName(path);
+                }
+            }
+
+            return "";
+        }
+
+        private void InstallSlotImage(string[] baseNames, bool exactFileName, string sourcePath)
+        {
+            string extension = Path.GetExtension(sourcePath).ToLowerInvariant();
+            if (!IsSupportedExtension(extension))
+                throw new InvalidOperationException("Unsupported image file.");
+
+            Directory.CreateDirectory(ImageDirectory);
+            byte[] bytes = File.ReadAllBytes(sourcePath);
+            ClearSlotImages(baseNames, exactFileName);
+
+            string targetBaseName = baseNames.Length > 0 ? baseNames[0] : "idle";
+            string targetPath = Path.Combine(ImageDirectory, targetBaseName + extension);
+            File.WriteAllBytes(targetPath, bytes);
+        }
+
+        private void ClearSlotImages(IEnumerable<string> baseNames, bool exactFileName)
+        {
+            foreach (string baseName in baseNames)
+            {
+                foreach (string extension in Extensions)
+                {
+                    string path = exactFileName
+                        ? FindExactImagePath(ImageDirectory, baseName + extension)
+                        : Path.Combine(ImageDirectory, baseName + extension);
+                    try
+                    {
+                        if (File.Exists(path))
+                            File.Delete(path);
+                    }
+                    catch
+                    {
+                    }
+                }
+            }
+        }
+
+        private static bool IsSupportedExtension(string extension)
+        {
+            foreach (string candidate in Extensions)
+            {
+                if (candidate.Equals(extension, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+
+            return false;
         }
 
         private static void TryLoadPose(Dictionary<IndicatorPose, IndicatorImage> target, string imageDirectory, IndicatorPose pose, string fileNameWithoutExtension)
@@ -2986,6 +3143,283 @@ namespace CursorImeIndicator
         public bool UseCutoutLine { get; set; }
 
         public CutoutLineKind LineKind { get; set; }
+    }
+
+    internal sealed class ImageSelectionForm : Form
+    {
+        private readonly IndicatorAssets assets;
+        private readonly Action<string> onChanged;
+        private readonly ComboBox modeCombo;
+        private readonly ComboBox stateCombo;
+        private readonly ComboBox poseCombo;
+        private readonly Label slotLabel;
+        private readonly Label currentFileLabel;
+
+        public ImageSelectionForm(IndicatorAssets assets, Action<string> onChanged)
+        {
+            this.assets = assets;
+            this.onChanged = onChanged;
+
+            Text = TextResources.ChooseImage;
+            FormBorderStyle = FormBorderStyle.FixedToolWindow;
+            MaximizeBox = false;
+            MinimizeBox = false;
+            ShowInTaskbar = false;
+            TopMost = true;
+            StartPosition = FormStartPosition.CenterScreen;
+            ClientSize = new Size(390, 224);
+
+            Label modeLabel = new Label();
+            modeLabel.Text = TextResources.ImagePackMode;
+            modeLabel.Location = new Point(14, 18);
+            modeLabel.Size = new Size(92, 22);
+
+            modeCombo = new ComboBox();
+            modeCombo.DropDownStyle = ComboBoxStyle.DropDownList;
+            modeCombo.Location = new Point(112, 16);
+            modeCombo.Size = new Size(160, 24);
+            modeCombo.Items.Add(new ModeItem(false, TextResources.SharedPoseImages));
+            modeCombo.Items.Add(new ModeItem(true, TextResources.StatePoseImages));
+            modeCombo.SelectedIndexChanged += OnSelectionChanged;
+
+            Label stateLabel = new Label();
+            stateLabel.Text = TextResources.State;
+            stateLabel.Location = new Point(14, 52);
+            stateLabel.Size = new Size(92, 22);
+
+            stateCombo = new ComboBox();
+            stateCombo.DropDownStyle = ComboBoxStyle.DropDownList;
+            stateCombo.Location = new Point(112, 50);
+            stateCombo.Size = new Size(160, 24);
+            foreach (string stateKey in IndicatorStates.All)
+                stateCombo.Items.Add(new StateChoice(stateKey, IndicatorStates.GetDisplayName(stateKey)));
+            stateCombo.SelectedIndexChanged += OnSelectionChanged;
+
+            Label poseLabel = new Label();
+            poseLabel.Text = TextResources.Pose;
+            poseLabel.Location = new Point(14, 86);
+            poseLabel.Size = new Size(92, 22);
+
+            poseCombo = new ComboBox();
+            poseCombo.DropDownStyle = ComboBoxStyle.DropDownList;
+            poseCombo.Location = new Point(112, 84);
+            poseCombo.Size = new Size(160, 24);
+            foreach (IndicatorPose pose in IndicatorPoseHelper.All)
+                poseCombo.Items.Add(new PoseChoice(pose, IndicatorPoseHelper.GetDisplayName(pose)));
+            poseCombo.SelectedIndexChanged += OnSelectionChanged;
+
+            Label slotTitleLabel = new Label();
+            slotTitleLabel.Text = TextResources.ImageSlot;
+            slotTitleLabel.Location = new Point(14, 122);
+            slotTitleLabel.Size = new Size(92, 22);
+
+            slotLabel = new Label();
+            slotLabel.Location = new Point(112, 122);
+            slotLabel.Size = new Size(260, 22);
+            slotLabel.AutoEllipsis = true;
+
+            Label currentTitleLabel = new Label();
+            currentTitleLabel.Text = TextResources.CurrentFile;
+            currentTitleLabel.Location = new Point(14, 150);
+            currentTitleLabel.Size = new Size(92, 22);
+
+            currentFileLabel = new Label();
+            currentFileLabel.Location = new Point(112, 150);
+            currentFileLabel.Size = new Size(260, 22);
+            currentFileLabel.AutoEllipsis = true;
+
+            Button selectButton = new Button();
+            selectButton.Text = TextResources.SelectFile;
+            selectButton.Location = new Point(126, 184);
+            selectButton.Size = new Size(86, 28);
+            selectButton.Click += OnSelectFileClicked;
+
+            Button clearButton = new Button();
+            clearButton.Text = TextResources.RemoveSlotImage;
+            clearButton.Location = new Point(218, 184);
+            clearButton.Size = new Size(86, 28);
+            clearButton.Click += OnClearSlotClicked;
+
+            Button closeButton = new Button();
+            closeButton.Text = TextResources.Close;
+            closeButton.Location = new Point(310, 184);
+            closeButton.Size = new Size(66, 28);
+            closeButton.Click += OnCloseClicked;
+
+            Controls.Add(modeLabel);
+            Controls.Add(modeCombo);
+            Controls.Add(stateLabel);
+            Controls.Add(stateCombo);
+            Controls.Add(poseLabel);
+            Controls.Add(poseCombo);
+            Controls.Add(slotTitleLabel);
+            Controls.Add(slotLabel);
+            Controls.Add(currentTitleLabel);
+            Controls.Add(currentFileLabel);
+            Controls.Add(selectButton);
+            Controls.Add(clearButton);
+            Controls.Add(closeButton);
+
+            modeCombo.SelectedIndex = 0;
+            stateCombo.SelectedIndex = 0;
+            poseCombo.SelectedIndex = 0;
+            RefreshSelection();
+        }
+
+        public void RefreshSelection()
+        {
+            bool stateMode = IsStateMode();
+            stateCombo.Enabled = stateMode;
+
+            IndicatorPose pose = GetSelectedPose();
+            string fileName = stateMode
+                ? assets.GetStatePoseFileName(GetSelectedStateKey(), pose)
+                : assets.GetSharedPoseFileName(pose);
+
+            slotLabel.Text = GetSlotName();
+            currentFileLabel.Text = string.IsNullOrEmpty(fileName) ? TextResources.NoImageSelected : fileName;
+        }
+
+        private void OnSelectionChanged(object sender, EventArgs e)
+        {
+            RefreshSelection();
+        }
+
+        private void OnSelectFileClicked(object sender, EventArgs e)
+        {
+            Directory.CreateDirectory(assets.ImageDirectory);
+            using (OpenFileDialog dialog = new OpenFileDialog())
+            {
+                dialog.Title = TextResources.SelectFile;
+                dialog.InitialDirectory = assets.ImageDirectory;
+                dialog.Multiselect = false;
+                dialog.Filter = "Image files|*.gif;*.png;*.jpg;*.jpeg;*.jfif;*.bmp|All files|*.*";
+                if (dialog.ShowDialog() != DialogResult.OK)
+                    return;
+
+                try
+                {
+                    if (IsStateMode())
+                        assets.InstallStatePoseImage(GetSelectedStateKey(), GetSelectedPose(), dialog.FileName);
+                    else
+                        assets.InstallSharedPoseImage(GetSelectedPose(), dialog.FileName);
+
+                    NotifyChanged(TextResources.ImageInstalled);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(ex.Message, TextResources.ChooseImage, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
+            }
+        }
+
+        private void OnClearSlotClicked(object sender, EventArgs e)
+        {
+            if (IsStateMode())
+                assets.ClearStatePoseImage(GetSelectedStateKey(), GetSelectedPose());
+            else
+                assets.ClearSharedPoseImage(GetSelectedPose());
+
+            NotifyChanged(TextResources.ImageSlotCleared);
+        }
+
+        private void OnCloseClicked(object sender, EventArgs e)
+        {
+            Close();
+        }
+
+        private void NotifyChanged(string message)
+        {
+            if (onChanged != null)
+                onChanged(message);
+
+            RefreshSelection();
+        }
+
+        private bool IsStateMode()
+        {
+            ModeItem item = modeCombo.SelectedItem as ModeItem;
+            return item != null && item.StateMode;
+        }
+
+        private string GetSelectedStateKey()
+        {
+            StateChoice item = stateCombo.SelectedItem as StateChoice;
+            return item == null ? IndicatorStates.Korean : item.StateKey;
+        }
+
+        private IndicatorPose GetSelectedPose()
+        {
+            PoseChoice item = poseCombo.SelectedItem as PoseChoice;
+            return item == null ? IndicatorPose.Idle : item.Pose;
+        }
+
+        private string GetSlotName()
+        {
+            string poseKey = IndicatorPoseHelper.GetKey(GetSelectedPose());
+            if (!IsStateMode())
+                return poseKey;
+
+            string stateKey = GetSelectedStateKey();
+            if (stateKey == IndicatorStates.EnglishUpper)
+                stateKey = "upper";
+
+            return stateKey + "-" + poseKey;
+        }
+
+        private sealed class ModeItem
+        {
+            public ModeItem(bool stateMode, string name)
+            {
+                StateMode = stateMode;
+                Name = name;
+            }
+
+            public bool StateMode { get; private set; }
+
+            private string Name { get; set; }
+
+            public override string ToString()
+            {
+                return Name;
+            }
+        }
+
+        private sealed class StateChoice
+        {
+            public StateChoice(string stateKey, string name)
+            {
+                StateKey = stateKey;
+                Name = name;
+            }
+
+            public string StateKey { get; private set; }
+
+            private string Name { get; set; }
+
+            public override string ToString()
+            {
+                return Name;
+            }
+        }
+
+        private sealed class PoseChoice
+        {
+            public PoseChoice(IndicatorPose pose, string name)
+            {
+                Pose = pose;
+                Name = name;
+            }
+
+            public IndicatorPose Pose { get; private set; }
+
+            private string Name { get; set; }
+
+            public override string ToString()
+            {
+                return Name;
+            }
+        }
     }
 
     internal sealed class CutoutOptionsForm : Form
