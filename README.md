@@ -152,6 +152,14 @@ Right-click the tray icon and open `크기`.
 - Drag the slider with the mouse to tune the size gain by percentage.
 - The selected percentage is saved and reused next time.
 
+## Display Mode / 표시 모드
+
+Right-click the tray icon and open `표시 모드`.
+
+- `항상 따라다니기`: the mascot follows the cursor whenever the app is enabled.
+- `멈췄을 때만 표시`: the mascot hides while the mouse is moving, then appears next to the cursor after the mouse stays still for a short moment.
+- The selected mode is saved and reused next time.
+
 ## Label Position Control / 글자 위치 조정
 
 Right-click the tray icon and choose `글자 위치 조정`.
@@ -229,6 +237,7 @@ Right-click the tray icon and open `라이선스`.
 - Tray menu image slot picker.
 - Tray menu image reload.
 - Tray menu label visibility toggle.
+- Tray menu display mode: always follow or show only when the mouse is idle.
 - Tray menu size presets and drag slider.
 - Tray menu state + pose label-position drag editor.
 - Tray menu mascot color picker.

@@ -49,6 +49,12 @@ namespace CursorImeIndicator
         Cheer
     }
 
+    internal enum CursorDisplayMode
+    {
+        AlwaysFollow,
+        ShowWhenIdle
+    }
+
     internal static class IndicatorPoseHelper
     {
         public static readonly IndicatorPose[] All = new[] { IndicatorPose.Idle, IndicatorPose.Point, IndicatorPose.Cheer };
@@ -171,6 +177,9 @@ namespace CursorImeIndicator
         public const string DragSizeSettings = "\uB4DC\uB798\uADF8\uB85C \uD06C\uAE30 \uC870\uC815";
         public const string AdjustFaceCenter = "\uAE00\uC790 \uC704\uCE58 \uC870\uC815";
         public const string ShowLabel = "\uAE00\uC790 \uD45C\uC2DC";
+        public const string DisplayModeMenu = "\uD45C\uC2DC \uBAA8\uB4DC";
+        public const string DisplayModeAlwaysFollow = "\uD56D\uC0C1 \uB530\uB77C\uB2E4\uB2C8\uAE30";
+        public const string DisplayModeShowWhenIdle = "\uBA48\uCDB0\uC744 \uB54C\uB9CC \uD45C\uC2DC";
         public const string MascotColorMenu = "\uBBF8\uB2C8\uBBF8 \uC0C9\uC0C1";
         public const string UseLanguageColors = "\uC0C1\uD0DC\uBCC4 \uC0C9\uC0C1 \uC0AC\uC6A9";
         public const string BaseColor = "\uAE30\uBCF8 \uC0C9\uC0C1 \uC120\uD0DD";
@@ -251,10 +260,12 @@ namespace CursorImeIndicator
         private readonly ToolStripMenuItem voiceMenu;
         private ToolStripMenuItem voiceEnabledItem;
         private readonly ToolStripMenuItem showLabelItem;
+        private readonly ToolStripMenuItem displayModeMenu;
         private ToolStripMenuItem colorMenu;
         private ToolStripMenuItem useLanguageColorsItem;
         private ToolStripMenuItem licenseMenu;
         private readonly List<ToolStripMenuItem> sizePresetItems = new List<ToolStripMenuItem>();
+        private readonly List<ToolStripMenuItem> displayModeItems = new List<ToolStripMenuItem>();
         private readonly SynchronizationContext uiContext;
         private Icon currentTrayIcon;
         private SizeSettingsForm sizeSettingsForm;
@@ -269,6 +280,9 @@ namespace CursorImeIndicator
         private string lastText = "";
         private string lastVoiceText = "";
         private DateTime lastVoiceRequestUtc = DateTime.MinValue;
+        private Point lastVisibilityCursorPosition;
+        private DateTime lastVisibilityCursorMoveUtc = DateTime.UtcNow;
+        private bool hasVisibilityCursorPosition;
 
         public IndicatorContext()
         {
@@ -299,6 +313,8 @@ namespace CursorImeIndicator
             colorMenu = CreateColorMenu();
             voiceMenu = CreateVoiceMenu();
             licenseMenu = CreateLicenseMenu();
+            displayModeMenu = CreateDisplayModeMenu();
+            UpdateDisplayModeMenuChecks();
             showLabelItem = new ToolStripMenuItem(TextResources.ShowLabel);
             showLabelItem.CheckOnClick = true;
             showLabelItem.Checked = settings.ShowLabel;
@@ -312,6 +328,7 @@ namespace CursorImeIndicator
             menu.Items.Add(new ToolStripMenuItem(TextResources.ReloadImages, null, OnReloadImages));
             menu.Items.Add(new ToolStripMenuItem(TextResources.RemoveImageBackground, null, OnRemoveImageBackground));
             menu.Items.Add(sizeMenu);
+            menu.Items.Add(displayModeMenu);
             menu.Items.Add(colorMenu);
             menu.Items.Add(showLabelItem);
             menu.Items.Add(new ToolStripMenuItem(TextResources.AdjustFaceCenter, null, OnOpenFaceCenterSettings));
@@ -353,6 +370,25 @@ namespace CursorImeIndicator
 
             menu.DropDownItems.Add(new ToolStripSeparator());
             menu.DropDownItems.Add(new ToolStripMenuItem(TextResources.DragSizeSettings, null, OnOpenSizeSettings));
+            return menu;
+        }
+
+        private ToolStripMenuItem CreateDisplayModeMenu()
+        {
+            ToolStripMenuItem menu = new ToolStripMenuItem(TextResources.DisplayModeMenu);
+
+            ToolStripMenuItem alwaysFollowItem = new ToolStripMenuItem(TextResources.DisplayModeAlwaysFollow);
+            alwaysFollowItem.Tag = CursorDisplayMode.AlwaysFollow;
+            alwaysFollowItem.Click += OnDisplayModeClick;
+            displayModeItems.Add(alwaysFollowItem);
+            menu.DropDownItems.Add(alwaysFollowItem);
+
+            ToolStripMenuItem showWhenIdleItem = new ToolStripMenuItem(TextResources.DisplayModeShowWhenIdle);
+            showWhenIdleItem.Tag = CursorDisplayMode.ShowWhenIdle;
+            showWhenIdleItem.Click += OnDisplayModeClick;
+            displayModeItems.Add(showWhenIdleItem);
+            menu.DropDownItems.Add(showWhenIdleItem);
+
             return menu;
         }
 
@@ -420,7 +456,16 @@ namespace CursorImeIndicator
             indicatorForm.TickAnimations(cursor);
 
             if (!enabled)
+            {
+                indicatorForm.Hide();
                 return;
+            }
+
+            if (!ShouldShowForDisplayMode(cursor))
+            {
+                indicatorForm.Hide();
+                return;
+            }
 
             Rectangle area = Screen.FromPoint(cursor).WorkingArea;
             int x = cursor.X + 8;
@@ -436,6 +481,31 @@ namespace CursorImeIndicator
             indicatorForm.MoveWithoutActivating(x, y);
             if (!indicatorForm.Visible)
                 indicatorForm.ShowWithoutStealingFocus();
+        }
+
+        private bool ShouldShowForDisplayMode(Point cursor)
+        {
+            if (settings.DisplayMode == CursorDisplayMode.AlwaysFollow)
+                return true;
+
+            const int idleDelayMilliseconds = 800;
+            DateTime now = DateTime.UtcNow;
+            if (!hasVisibilityCursorPosition)
+            {
+                lastVisibilityCursorPosition = cursor;
+                lastVisibilityCursorMoveUtc = now;
+                hasVisibilityCursorPosition = true;
+                return false;
+            }
+
+            if (cursor != lastVisibilityCursorPosition)
+            {
+                lastVisibilityCursorPosition = cursor;
+                lastVisibilityCursorMoveUtc = now;
+                return false;
+            }
+
+            return (now - lastVisibilityCursorMoveUtc).TotalMilliseconds >= idleDelayMilliseconds;
         }
 
         private void OnEnabledChanged(object sender, EventArgs e)
@@ -550,6 +620,18 @@ namespace CursorImeIndicator
                 return;
 
             SetSizePercent((int)item.Tag);
+        }
+
+        private void OnDisplayModeClick(object sender, EventArgs e)
+        {
+            ToolStripMenuItem item = sender as ToolStripMenuItem;
+            if (item == null || item.Tag == null)
+                return;
+
+            settings.DisplayMode = (CursorDisplayMode)item.Tag;
+            settings.Save();
+            ResetIdleVisibility();
+            UpdateDisplayModeMenuChecks();
         }
 
         private void OnOpenSizeSettings(object sender, EventArgs e)
@@ -860,6 +942,15 @@ namespace CursorImeIndicator
             UpdateSizeMenuChecks();
         }
 
+        private void ResetIdleVisibility()
+        {
+            hasVisibilityCursorPosition = false;
+            lastVisibilityCursorMoveUtc = DateTime.UtcNow;
+
+            if (settings.DisplayMode == CursorDisplayMode.ShowWhenIdle)
+                indicatorForm.Hide();
+        }
+
         private void SetFaceCenter(string stateKey, IndicatorPose pose, PointF center)
         {
             settings.SetLabelCenter(stateKey, pose, center);
@@ -946,6 +1037,12 @@ namespace CursorImeIndicator
                 item.Checked = item.Tag != null && (int)item.Tag == settings.SizePercent;
 
             sizeMenu.Text = TextResources.SizeMenu + " (" + settings.SizePercent + "%)";
+        }
+
+        private void UpdateDisplayModeMenuChecks()
+        {
+            foreach (ToolStripMenuItem item in displayModeItems)
+                item.Checked = item.Tag != null && (CursorDisplayMode)item.Tag == settings.DisplayMode;
         }
 
         private void OnTrayDoubleClick(object sender, MouseEventArgs e)
@@ -6172,6 +6269,7 @@ namespace CursorImeIndicator
 
         public int SizePercent = DefaultSizePercent;
         public bool ShowLabel = true;
+        public CursorDisplayMode DisplayMode = CursorDisplayMode.AlwaysFollow;
         public PointF IdleFaceCenter = GetDefaultFaceCenter(IndicatorPose.Idle);
         public PointF PointFaceCenter = GetDefaultFaceCenter(IndicatorPose.Point);
         public PointF CheerFaceCenter = GetDefaultFaceCenter(IndicatorPose.Cheer);
@@ -6217,6 +6315,10 @@ namespace CursorImeIndicator
                         bool value;
                         if (bool.TryParse(valueText, out value))
                             settings.ShowLabel = value;
+                    }
+                    else if (key.Equals("displayMode", StringComparison.OrdinalIgnoreCase))
+                    {
+                        settings.DisplayMode = ParseDisplayMode(valueText);
                     }
                     else if (key.Equals("idleFace", StringComparison.OrdinalIgnoreCase))
                     {
@@ -6294,6 +6396,7 @@ namespace CursorImeIndicator
                 List<string> lines = new List<string>();
                 lines.Add("sizePercent=" + ClampSizePercent(SizePercent));
                 lines.Add("showLabel=" + ShowLabel);
+                lines.Add("displayMode=" + FormatDisplayMode(DisplayMode));
                 lines.Add("idleFace=" + FormatFaceCenter(IdleFaceCenter));
                 lines.Add("pointFace=" + FormatFaceCenter(PointFaceCenter));
                 lines.Add("cheerFace=" + FormatFaceCenter(CheerFaceCenter));
@@ -6326,6 +6429,21 @@ namespace CursorImeIndicator
             if (value > MaxSizePercent)
                 return MaxSizePercent;
             return value;
+        }
+
+        private static CursorDisplayMode ParseDisplayMode(string value)
+        {
+            string text = (value ?? "").Trim();
+            if (text.Equals("showWhenIdle", StringComparison.OrdinalIgnoreCase) ||
+                text.Equals("idle", StringComparison.OrdinalIgnoreCase))
+                return CursorDisplayMode.ShowWhenIdle;
+
+            return CursorDisplayMode.AlwaysFollow;
+        }
+
+        private static string FormatDisplayMode(CursorDisplayMode mode)
+        {
+            return mode == CursorDisplayMode.ShowWhenIdle ? "showWhenIdle" : "alwaysFollow";
         }
 
         public PointF GetFaceCenter(IndicatorPose pose)
