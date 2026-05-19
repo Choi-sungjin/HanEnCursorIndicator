@@ -322,6 +322,7 @@ namespace CursorImeIndicator
             showLabelItem.CheckedChanged += OnShowLabelChanged;
 
             ContextMenuStrip menu = new ContextMenuStrip();
+            menu.Opening += OnTrayMenuOpening;
             menu.Opened += OnTrayMenuOpened;
             menu.Closed += OnTrayMenuClosed;
             menu.Items.Add(enabledItem);
@@ -445,6 +446,12 @@ namespace CursorImeIndicator
 
         private void OnTimerTick(object sender, EventArgs e)
         {
+            if (trayMenuOpen)
+            {
+                indicatorForm.Hide();
+                return;
+            }
+
             Point cursor = Cursor.Position;
             string text = ImeStateReader.GetIndicatorText();
             stateItem.Text = TextResources.CurrentStatePrefix + text;
@@ -454,12 +461,6 @@ namespace CursorImeIndicator
                 lastText = text;
                 indicatorForm.SetIndicatorText(text);
                 ReplaceTrayIcon(text);
-            }
-
-            if (trayMenuOpen)
-            {
-                indicatorForm.Hide();
-                return;
             }
 
             indicatorForm.TickAnimations(cursor);
@@ -517,16 +518,30 @@ namespace CursorImeIndicator
             return (now - lastVisibilityCursorMoveUtc).TotalMilliseconds >= idleDelayMilliseconds;
         }
 
+        private void OnTrayMenuOpening(object sender, System.ComponentModel.CancelEventArgs e)
+        {
+            PauseIndicatorForTrayMenu();
+        }
+
         private void OnTrayMenuOpened(object sender, EventArgs e)
         {
-            trayMenuOpen = true;
-            indicatorForm.Hide();
+            PauseIndicatorForTrayMenu();
         }
 
         private void OnTrayMenuClosed(object sender, ToolStripDropDownClosedEventArgs e)
         {
             trayMenuOpen = false;
             ResetIdleVisibility();
+            if (!timer.Enabled)
+                timer.Start();
+        }
+
+        private void PauseIndicatorForTrayMenu()
+        {
+            trayMenuOpen = true;
+            indicatorForm.Hide();
+            if (timer.Enabled)
+                timer.Stop();
         }
 
         private void OnEnabledChanged(object sender, EventArgs e)
