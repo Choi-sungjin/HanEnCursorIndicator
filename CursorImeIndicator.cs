@@ -275,6 +275,7 @@ namespace CursorImeIndicator
         private LicenseRegistrationForm licenseRegistrationForm;
         private SelectionDragWatcher selectionDragWatcher;
         private bool enabled = true;
+        private bool trayMenuOpen;
         private bool voiceBusy;
         private bool missingVoiceConfigBalloonShown;
         private string lastText = "";
@@ -321,6 +322,8 @@ namespace CursorImeIndicator
             showLabelItem.CheckedChanged += OnShowLabelChanged;
 
             ContextMenuStrip menu = new ContextMenuStrip();
+            menu.Opened += OnTrayMenuOpened;
+            menu.Closed += OnTrayMenuClosed;
             menu.Items.Add(enabledItem);
             menu.Items.Add(stateItem);
             menu.Items.Add(new ToolStripMenuItem(TextResources.OpenImageFolder, null, OnOpenImageFolder));
@@ -453,6 +456,12 @@ namespace CursorImeIndicator
                 ReplaceTrayIcon(text);
             }
 
+            if (trayMenuOpen)
+            {
+                indicatorForm.Hide();
+                return;
+            }
+
             indicatorForm.TickAnimations(cursor);
 
             if (!enabled)
@@ -506,6 +515,18 @@ namespace CursorImeIndicator
             }
 
             return (now - lastVisibilityCursorMoveUtc).TotalMilliseconds >= idleDelayMilliseconds;
+        }
+
+        private void OnTrayMenuOpened(object sender, EventArgs e)
+        {
+            trayMenuOpen = true;
+            indicatorForm.Hide();
+        }
+
+        private void OnTrayMenuClosed(object sender, ToolStripDropDownClosedEventArgs e)
+        {
+            trayMenuOpen = false;
+            ResetIdleVisibility();
         }
 
         private void OnEnabledChanged(object sender, EventArgs e)
