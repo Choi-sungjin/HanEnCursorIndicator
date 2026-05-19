@@ -1178,6 +1178,23 @@ namespace CursorImeIndicator
             }
         }
 
+        protected override void WndProc(ref Message m)
+        {
+            if (m.Msg == NativeMethods.WM_NCHITTEST)
+            {
+                m.Result = new IntPtr(NativeMethods.HTTRANSPARENT);
+                return;
+            }
+
+            if (m.Msg == NativeMethods.WM_MOUSEACTIVATE)
+            {
+                m.Result = new IntPtr(NativeMethods.MA_NOACTIVATEANDEAT);
+                return;
+            }
+
+            base.WndProc(ref m);
+        }
+
         public void SetIndicatorText(string text)
         {
             if (indicatorText == text)
@@ -6752,8 +6769,12 @@ namespace CursorImeIndicator
         public const int WS_EX_LAYERED = 0x00080000;
         public const int WS_EX_NOACTIVATE = 0x08000000;
         public const int WH_MOUSE_LL = 14;
+        public const int WM_MOUSEACTIVATE = 0x0021;
+        public const int WM_NCHITTEST = 0x0084;
         public const int WM_LBUTTONDOWN = 0x0201;
         public const int WM_LBUTTONUP = 0x0202;
+        public const int HTTRANSPARENT = -1;
+        public const int MA_NOACTIVATEANDEAT = 4;
         public const uint SWP_NOACTIVATE = 0x0010;
         public const uint SWP_SHOWWINDOW = 0x0040;
         public static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
