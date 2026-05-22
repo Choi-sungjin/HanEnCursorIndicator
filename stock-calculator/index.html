@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>주식 수익률 계산기</title>
+<style>
+  :root {
+    --bg: #f5f6fa;
+    --panel: #ffffff;
+    --border: #e3e6ee;
+    --text: #1f2330;
+    --muted: #6b7280;
+    --up: #d93636;     /* 한국식: 상승=빨강 */
+    --down: #1e63d6;   /* 한국식: 하락=파랑 */
+    --neutral: #6b7280;
+    --accent: #2b3147;
+    --accent-soft: #eef0f7;
+    --row-hover: #f9faff;
+    --shadow: 0 2px 10px rgba(20, 24, 40, 0.06);
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo",
+      "Malgun Gothic", "맑은 고딕", Roboto, "Noto Sans KR", sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  .container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 24px 16px 60px;
+  }
+  h1 {
+    margin: 0 0 4px;
+    font-size: 22px;
+    letter-spacing: -0.3px;
+  }
+  .subtitle {
+    color: var(--muted);
+    margin-bottom: 20px;
+    font-size: 13px;
+  }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    padding: 18px;
+    margin-bottom: 16px;
+  }
+
+  /* Summary cards */
+  .summary {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+  }
+  .summary .cell {
+    background: var(--accent-soft);
+    border-radius: 10px;
+    padding: 12px 14px;
+  }
+  .summary .label {
+    color: var(--muted);
+    font-size: 12px;
+    margin-bottom: 4px;
+  }
+  .summary .value {
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: -0.2px;
+  }
+  .up   { color: var(--up); }
+  .down { color: var(--down); }
+  .zero { color: var(--neutral); }
+
+  /* Market slider */
+  .market-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .market-row label {
+    font-weight: 600;
+    min-width: 120px;
+  }
+  .market-row input[type=range] {
+    flex: 1 1 240px;
+    min-width: 180px;
+    accent-color: var(--accent);
+  }
+  .market-row .pct {
+    min-width: 70px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    font-size: 16px;
+  }
+  .btn {
+    background: var(--accent);
+    color: #fff;
+    border: 0;
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.05s ease, background 0.15s ease;
+  }
+  .btn:hover { background: #1c2238; }
+  .btn:active { transform: translateY(1px); }
+  .btn.ghost {
+    background: transparent;
+    color: var(--accent);
+    border: 1px solid var(--border);
+  }
+  .btn.ghost:hover { background: var(--accent-soft); }
+  .btn.danger {
+    background: transparent;
+    color: var(--down);
+    border: 1px solid transparent;
+    padding: 4px 8px;
+    font-size: 12px;
+  }
+  .btn.danger:hover { background: #eef3ff; }
+
+  /* Table */
+  .table-wrap {
+    overflow-x: auto;
+  }
+  table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    min-width: 880px;
+  }
+  thead th {
+    text-align: right;
+    font-weight: 600;
+    font-size: 12px;
+    color: var(--muted);
+    padding: 10px 8px;
+    border-bottom: 1px solid var(--border);
+    background: #fafbff;
+    position: sticky;
+    top: 0;
+  }
+  thead th:first-child, tbody td:first-child { text-align: left; }
+  tbody td {
+    padding: 8px;
+    border-bottom: 1px solid var(--border);
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    vertical-align: middle;
+  }
+  tbody tr:hover { background: var(--row-hover); }
+  tbody td input {
+    width: 100%;
+    max-width: 130px;
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 13px;
+    text-align: right;
+    background: #fff;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+  }
+  tbody td input.name {
+    text-align: left;
+    max-width: 160px;
+  }
+  tbody td input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(43, 49, 71, 0.12);
+  }
+  .actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 14px;
+    flex-wrap: wrap;
+  }
+  .empty {
+    text-align: center;
+    padding: 24px;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .col-name   { width: 18%; }
+  .col-num    { width: 11%; }
+  .col-pct    { width: 9%; }
+  .col-action { width: 50px; }
+
+  .section-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    margin: 0 0 12px;
+  }
+  .footer-note {
+    color: var(--muted);
+    font-size: 12px;
+    text-align: center;
+    margin-top: 8px;
+  }
+
+  @media (max-width: 720px) {
+    .summary { grid-template-columns: repeat(2, 1fr); }
+    h1 { font-size: 19px; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>주식 수익률 계산기</h1>
+  <div class="subtitle">매수 정보를 입력하고 등락률을 조정해 평가금액과 수익률 변화를 확인하세요. (자동 저장됨)</div>
+
+  <!-- Summary -->
+  <section class="panel">
+    <div class="section-title">전체 요약</div>
+    <div class="summary">
+      <div class="cell">
+        <div class="label">총 매수금액</div>
+        <div class="value" id="sumCost">0 원</div>
+      </div>
+      <div class="cell">
+        <div class="label">총 평가금액</div>
+        <div class="value" id="sumValue">0 원</div>
+      </div>
+      <div class="cell">
+        <div class="label">총 손익</div>
+        <div class="value" id="sumPnL">0 원</div>
+      </div>
+      <div class="cell">
+        <div class="label">평균 수익률</div>
+        <div class="value" id="sumRate">0.00 %</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Market sim -->
+  <section class="panel">
+    <div class="section-title">시장 시뮬레이션</div>
+    <div class="market-row">
+      <label for="market">전체 등락률 일괄 적용</label>
+      <input type="range" id="market" min="-50" max="50" step="0.1" value="0" />
+      <div class="pct" id="marketPct">0.0 %</div>
+      <button class="btn" id="applyMarket">전 종목 적용</button>
+      <button class="btn ghost" id="resetMarket">슬라이더 0%</button>
+    </div>
+  </section>
+
+  <!-- Holdings -->
+  <section class="panel">
+    <div class="section-title">보유 종목</div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th class="col-name">종목명</th>
+            <th class="col-num">매수단가</th>
+            <th class="col-num">수량</th>
+            <th class="col-num">매수금액</th>
+            <th class="col-pct">등락률(%)</th>
+            <th class="col-num">현재가(호가)</th>
+            <th class="col-num">평가금액</th>
+            <th class="col-num">손익</th>
+            <th class="col-pct">수익률</th>
+            <th class="col-action"></th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+    <div class="actions">
+      <button class="btn" id="addRow">+ 종목 추가</button>
+      <button class="btn ghost" id="clearAll">전체 삭제</button>
+    </div>
+  </section>
+
+  <div class="footer-note">데이터는 이 브라우저(localStorage)에만 저장됩니다.</div>
+</div>
+
+<script>
+(() => {
+  const STORAGE_KEY = "stock-calc-v1";
+  const $ = (id) => document.getElementById(id);
+  const fmtKRW = (n) => {
+    if (!isFinite(n)) n = 0;
+    const sign = n < 0 ? "-" : "";
+    return sign + Math.abs(Math.round(n)).toLocaleString("ko-KR") + " 원";
+  };
+  const fmtPrice = (n) => {
+    if (!isFinite(n)) return "0";
+    // 2 decimals if fractional, else integer with thousands sep
+    if (Math.abs(n - Math.round(n)) < 0.005) {
+      return Math.round(n).toLocaleString("ko-KR");
+    }
+    return n.toLocaleString("ko-KR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+  const fmtPct = (n) => {
+    if (!isFinite(n)) n = 0;
+    const sign = n > 0 ? "+" : "";
+    return sign + n.toFixed(2) + " %";
+  };
+  const colorClass = (n) => (n > 0 ? "up" : n < 0 ? "down" : "zero");
+  const parseNum = (v) => {
+    if (typeof v !== "string") v = String(v ?? "");
+    const cleaned = v.replace(/[,\s]/g, "");
+    const n = parseFloat(cleaned);
+    return isFinite(n) ? n : 0;
+  };
+
+  /** @type {{id:number,name:string,price:number,qty:number,changePct:number}[]} */
+  let holdings = load();
+  let nextId = holdings.reduce((m, h) => Math.max(m, h.id), 0) + 1;
+
+  function load() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return defaultRows();
+      const data = JSON.parse(raw);
+      if (!Array.isArray(data.holdings)) return defaultRows();
+      return data.holdings.map((h, i) => ({
+        id: h.id ?? i + 1,
+        name: h.name ?? "",
+        price: Number(h.price) || 0,
+        qty: Number(h.qty) || 0,
+        changePct: Number(h.changePct) || 0,
+      }));
+    } catch {
+      return defaultRows();
+    }
+  }
+  function defaultRows() {
+    return [
+      { id: 1, name: "예시: 삼성전자", price: 70000, qty: 10, changePct: 0 },
+    ];
+  }
+  function save() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ holdings }));
+    } catch {}
+  }
+
+  function addRow() {
+    holdings.push({ id: nextId++, name: "", price: 0, qty: 0, changePct: 0 });
+    render();
+    save();
+    // focus the new row's name input
+    const tbody = $("rows");
+    const last = tbody.lastElementChild;
+    if (last) last.querySelector("input.name")?.focus();
+  }
+  function removeRow(id) {
+    holdings = holdings.filter((h) => h.id !== id);
+    render();
+    save();
+  }
+  function updateField(id, field, value) {
+    const h = holdings.find((x) => x.id === id);
+    if (!h) return;
+    if (field === "name") h.name = value;
+    else h[field] = parseNum(value);
+    renderSummary();
+    renderRow(id);
+    save();
+  }
+
+  function rowMetrics(h) {
+    const cost = h.price * h.qty;
+    const current = h.price * (1 + h.changePct / 100);
+    const value = current * h.qty;
+    const pnl = value - cost;
+    const rate = cost > 0 ? (pnl / cost) * 100 : 0;
+    return { cost, current, value, pnl, rate };
+  }
+
+  function renderRow(id) {
+    const h = holdings.find((x) => x.id === id);
+    if (!h) return;
+    const tr = document.querySelector(`tr[data-id="${id}"]`);
+    if (!tr) return;
+    const m = rowMetrics(h);
+    tr.querySelector("[data-cost]").textContent = fmtKRW(m.cost);
+    const cur = tr.querySelector("[data-current]");
+    cur.textContent = fmtPrice(m.current);
+    cur.className = colorClass(h.changePct);
+    tr.querySelector("[data-value]").textContent = fmtKRW(m.value);
+    const pnlEl = tr.querySelector("[data-pnl]");
+    pnlEl.textContent = fmtKRW(m.pnl);
+    pnlEl.className = colorClass(m.pnl);
+    const rateEl = tr.querySelector("[data-rate]");
+    rateEl.textContent = fmtPct(m.rate);
+    rateEl.className = colorClass(m.rate);
+  }
+
+  function renderSummary() {
+    let totalCost = 0, totalValue = 0;
+    for (const h of holdings) {
+      const m = rowMetrics(h);
+      totalCost += m.cost;
+      totalValue += m.value;
+    }
+    const pnl = totalValue - totalCost;
+    const rate = totalCost > 0 ? (pnl / totalCost) * 100 : 0;
+    $("sumCost").textContent = fmtKRW(totalCost);
+    $("sumValue").textContent = fmtKRW(totalValue);
+    const sp = $("sumPnL");
+    sp.textContent = fmtKRW(pnl);
+    sp.className = "value " + colorClass(pnl);
+    const sr = $("sumRate");
+    sr.textContent = fmtPct(rate);
+    sr.className = "value " + colorClass(rate);
+  }
+
+  function render() {
+    const tbody = $("rows");
+    tbody.innerHTML = "";
+    if (holdings.length === 0) {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td colspan="10" class="empty">종목을 추가해 시작하세요.</td>`;
+      tbody.appendChild(tr);
+      renderSummary();
+      return;
+    }
+    for (const h of holdings) {
+      const tr = document.createElement("tr");
+      tr.dataset.id = h.id;
+      tr.innerHTML = `
+        <td><input class="name" type="text" data-f="name" value="${escapeAttr(h.name)}" placeholder="종목명" /></td>
+        <td><input type="text" inputmode="decimal" data-f="price" value="${h.price || ""}" placeholder="0" /></td>
+        <td><input type="text" inputmode="decimal" data-f="qty" value="${h.qty || ""}" placeholder="0" /></td>
+        <td data-cost>0 원</td>
+        <td><input type="text" inputmode="decimal" data-f="changePct" value="${h.changePct || ""}" placeholder="0" /></td>
+        <td data-current>0</td>
+        <td data-value>0 원</td>
+        <td data-pnl>0 원</td>
+        <td data-rate>0.00 %</td>
+        <td><button class="btn danger" data-del>삭제</button></td>
+      `;
+      tbody.appendChild(tr);
+
+      tr.querySelectorAll("input").forEach((inp) => {
+        inp.addEventListener("input", (e) => {
+          updateField(h.id, e.target.dataset.f, e.target.value);
+        });
+        inp.addEventListener("focus", (e) => e.target.select());
+      });
+      tr.querySelector("[data-del]").addEventListener("click", () => {
+        if (confirm("이 종목을 삭제할까요?")) removeRow(h.id);
+      });
+
+      renderRow(h.id);
+    }
+    renderSummary();
+  }
+
+  function escapeAttr(s) {
+    return String(s ?? "").replace(/[&<>"]/g, (c) => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;",
+    })[c]);
+  }
+
+  // Market slider
+  const market = $("market");
+  const marketPct = $("marketPct");
+  market.addEventListener("input", () => {
+    marketPct.textContent = (+market.value).toFixed(1) + " %";
+    marketPct.className = "pct " + colorClass(+market.value);
+  });
+  $("applyMarket").addEventListener("click", () => {
+    const v = parseFloat(market.value) || 0;
+    holdings.forEach((h) => (h.changePct = v));
+    render();
+    save();
+  });
+  $("resetMarket").addEventListener("click", () => {
+    market.value = 0;
+    marketPct.textContent = "0.0 %";
+    marketPct.className = "pct zero";
+  });
+
+  $("addRow").addEventListener("click", addRow);
+  $("clearAll").addEventListener("click", () => {
+    if (holdings.length === 0) return;
+    if (confirm("모든 종목을 삭제할까요?")) {
+      holdings = [];
+      render();
+      save();
+    }
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>
