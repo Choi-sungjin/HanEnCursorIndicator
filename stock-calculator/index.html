@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>주식 수익률 계산기</title>
+<title>주식 거래 시뮬레이터</title>
 <style>
   :root {
     --bg: #f5f6fa;
@@ -11,289 +11,209 @@
     --border: #e3e6ee;
     --text: #1f2330;
     --muted: #6b7280;
-    --up: #d93636;     /* 한국식: 상승=빨강 */
-    --down: #1e63d6;   /* 한국식: 하락=파랑 */
+    --up: #d93636;
+    --down: #1e63d6;
     --neutral: #6b7280;
     --accent: #2b3147;
     --accent-soft: #eef0f7;
     --row-hover: #f9faff;
     --shadow: 0 2px 10px rgba(20, 24, 40, 0.06);
+    --buy-bg: #fdecec;
+    --buy-fg: #b1241a;
+    --sell-bg: #e6effd;
+    --sell-fg: #0f4cb5;
   }
   * { box-sizing: border-box; }
   html, body {
-    margin: 0;
-    padding: 0;
-    background: var(--bg);
-    color: var(--text);
+    margin: 0; padding: 0;
+    background: var(--bg); color: var(--text);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo",
       "Malgun Gothic", "맑은 고딕", Roboto, "Noto Sans KR", sans-serif;
-    font-size: 14px;
-    line-height: 1.5;
+    font-size: 14px; line-height: 1.5;
   }
-  .container {
-    max-width: 1200px;
-    margin: 0 auto;
-    padding: 24px 16px 60px;
-  }
-  h1 {
-    margin: 0 0 4px;
-    font-size: 22px;
-    letter-spacing: -0.3px;
-  }
-  .subtitle {
-    color: var(--muted);
-    margin-bottom: 20px;
-    font-size: 13px;
-  }
+  .container { max-width: 960px; margin: 0 auto; padding: 20px 14px 60px; }
+  h1 { margin: 0 0 2px; font-size: 21px; letter-spacing: -0.3px; }
+  .subtitle { color: var(--muted); font-size: 12.5px; margin-bottom: 16px; }
   .panel {
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    box-shadow: var(--shadow);
-    padding: 18px;
-    margin-bottom: 16px;
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 12px; box-shadow: var(--shadow);
+    padding: 14px; margin-bottom: 14px;
+  }
+  .section-title {
+    font-size: 12px; font-weight: 700; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.4px; margin: 0 0 10px;
   }
 
-  /* Summary cards */
+  /* Summary */
   .summary {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 12px;
+    display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px;
   }
-  .summary .cell {
-    background: var(--accent-soft);
-    border-radius: 10px;
-    padding: 12px 14px;
-  }
-  .summary .label {
-    color: var(--muted);
-    font-size: 12px;
-    margin-bottom: 4px;
-  }
-  .summary .value {
-    font-size: 18px;
-    font-weight: 700;
-    letter-spacing: -0.2px;
-  }
-  .up   { color: var(--up); }
+  .summary .cell { background: var(--accent-soft); border-radius: 10px; padding: 10px 12px; }
+  .summary .label { color: var(--muted); font-size: 11.5px; margin-bottom: 2px; }
+  .summary .value { font-size: 16px; font-weight: 700; letter-spacing: -0.2px; font-variant-numeric: tabular-nums; }
+  .up { color: var(--up); }
   .down { color: var(--down); }
   .zero { color: var(--neutral); }
 
-  /* Market slider */
-  .market-row {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    flex-wrap: wrap;
-  }
-  .market-row label {
-    font-weight: 600;
-    min-width: 120px;
-  }
-  .market-row input[type=range] {
-    flex: 1 1 240px;
-    min-width: 180px;
-    accent-color: var(--accent);
-  }
-  .market-row .pct {
-    min-width: 70px;
-    text-align: right;
-    font-variant-numeric: tabular-nums;
-    font-weight: 700;
-    font-size: 16px;
-  }
+  /* Buttons */
   .btn {
-    background: var(--accent);
-    color: #fff;
-    border: 0;
-    border-radius: 8px;
-    padding: 8px 14px;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: transform 0.05s ease, background 0.15s ease;
+    background: var(--accent); color: #fff; border: 0; border-radius: 8px;
+    padding: 7px 12px; font-size: 13px; font-weight: 600; cursor: pointer;
   }
   .btn:hover { background: #1c2238; }
   .btn:active { transform: translateY(1px); }
-  .btn.ghost {
-    background: transparent;
-    color: var(--accent);
-    border: 1px solid var(--border);
-  }
+  .btn.ghost { background: transparent; color: var(--accent); border: 1px solid var(--border); }
   .btn.ghost:hover { background: var(--accent-soft); }
-  .btn.danger {
-    background: transparent;
-    color: var(--down);
-    border: 1px solid transparent;
-    padding: 4px 8px;
-    font-size: 12px;
-  }
+  .btn.danger { background: transparent; color: var(--down); border: 1px solid transparent; padding: 4px 8px; font-size: 12px; }
   .btn.danger:hover { background: #eef3ff; }
+  .btn.buy { background: var(--up); }
+  .btn.buy:hover { background: #b82a2a; }
+  .btn.sell { background: var(--down); }
+  .btn.sell:hover { background: #1a55b8; }
+  .btn.sm { padding: 4px 10px; font-size: 12px; border-radius: 6px; }
 
-  /* Table */
-  .table-wrap {
-    overflow-x: auto;
+  /* Stock card */
+  .stock-card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 12px; box-shadow: var(--shadow);
+    margin-bottom: 12px; overflow: hidden;
   }
-  table {
-    width: 100%;
-    border-collapse: separate;
-    border-spacing: 0;
-    min-width: 880px;
+  .card-head {
+    display: grid; grid-template-columns: 1fr auto auto;
+    gap: 10px; align-items: center; padding: 12px 14px;
+    cursor: pointer;
   }
-  thead th {
-    text-align: right;
-    font-weight: 600;
-    font-size: 12px;
-    color: var(--muted);
-    padding: 10px 8px;
-    border-bottom: 1px solid var(--border);
-    background: #fafbff;
-    position: sticky;
-    top: 0;
-  }
-  thead th:first-child, tbody td:first-child { text-align: left; }
-  tbody td {
-    padding: 8px;
-    border-bottom: 1px solid var(--border);
-    text-align: right;
-    font-variant-numeric: tabular-nums;
-    vertical-align: middle;
-  }
-  tbody tr:hover { background: var(--row-hover); }
-  tbody td input {
-    width: 100%;
-    max-width: 130px;
-    padding: 6px 8px;
-    border: 1px solid var(--border);
+  .card-head:hover { background: var(--row-hover); }
+  .card-head .name-input {
+    border: 0; background: transparent; font-size: 16px; font-weight: 700;
+    padding: 4px 6px; width: 100%; max-width: 220px;
     border-radius: 6px;
-    font-size: 13px;
-    text-align: right;
-    background: #fff;
-    color: var(--text);
+  }
+  .card-head .name-input:focus { background: #fff; outline: 1px solid var(--accent); }
+  .card-head .metrics {
+    display: flex; gap: 16px; font-size: 12.5px; color: var(--muted);
+    flex-wrap: wrap; justify-content: flex-end;
     font-variant-numeric: tabular-nums;
   }
-  tbody td input.name {
-    text-align: left;
-    max-width: 160px;
+  .card-head .metrics b { color: var(--text); font-weight: 700; }
+  .card-head .toggle {
+    background: transparent; border: 1px solid var(--border); border-radius: 6px;
+    width: 28px; height: 28px; cursor: pointer; color: var(--muted);
+    display: inline-flex; align-items: center; justify-content: center;
   }
-  tbody td input:focus {
-    outline: none;
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px rgba(43, 49, 71, 0.12);
+  .card-head .toggle:hover { background: var(--accent-soft); }
+  .card-body {
+    padding: 0 14px 14px;
+    border-top: 1px solid var(--border);
+    background: #fbfcff;
   }
-  .actions {
-    display: flex;
-    gap: 8px;
-    margin-top: 14px;
-    flex-wrap: wrap;
-  }
-  .empty {
-    text-align: center;
-    padding: 24px;
-    color: var(--muted);
-    font-size: 13px;
-  }
-  .col-name   { width: 18%; }
-  .col-num    { width: 11%; }
-  .col-pct    { width: 9%; }
-  .col-action { width: 50px; }
+  .card-body.collapsed { display: none; }
 
-  .section-title {
-    font-size: 13px;
-    font-weight: 700;
-    color: var(--muted);
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
-    margin: 0 0 12px;
+  /* Price simulation row */
+  .price-row {
+    display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+    padding: 12px 0; border-bottom: 1px solid var(--border);
   }
-  .footer-note {
-    color: var(--muted);
-    font-size: 12px;
-    text-align: center;
-    margin-top: 8px;
+  .price-row label { font-weight: 600; min-width: 90px; }
+  .price-row input[type=range] { flex: 1 1 180px; min-width: 140px; accent-color: var(--accent); }
+  .price-row .now {
+    font-variant-numeric: tabular-nums; font-weight: 700; font-size: 15px;
+    min-width: 95px; text-align: right;
   }
+  .price-row .pct { min-width: 64px; text-align: right; font-variant-numeric: tabular-nums; font-weight: 700; }
+
+  /* Chart */
+  .chart-wrap { padding: 8px 0; }
+  svg.chart { width: 100%; height: 120px; display: block; background: #fff; border: 1px solid var(--border); border-radius: 8px; }
+
+  /* Transactions */
+  .tx-table { width: 100%; border-collapse: separate; border-spacing: 0; margin-top: 8px; }
+  .tx-table th, .tx-table td {
+    padding: 7px 6px; border-bottom: 1px solid var(--border); text-align: right;
+    font-size: 12.5px; font-variant-numeric: tabular-nums;
+  }
+  .tx-table th { color: var(--muted); font-weight: 600; font-size: 11.5px; }
+  .tx-table th:first-child, .tx-table td:first-child { text-align: left; }
+  .tx-table tr:last-child td { border-bottom: 0; }
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 10px; font-weight: 700; font-size: 11px; }
+  .tag.buy { background: var(--buy-bg); color: var(--buy-fg); }
+  .tag.sell { background: var(--sell-bg); color: var(--sell-fg); }
+  .tx-table .delta { font-size: 11px; color: var(--muted); }
+
+  /* Add transaction form */
+  .tx-form {
+    display: grid;
+    grid-template-columns: 1.4fr 0.9fr 1fr 0.8fr auto;
+    gap: 6px; padding: 10px 0; border-top: 1px solid var(--border);
+  }
+  .tx-form input, .tx-form select {
+    padding: 7px 8px; border: 1px solid var(--border); border-radius: 6px;
+    font-size: 13px; font-variant-numeric: tabular-nums; background: #fff; color: var(--text);
+    width: 100%; min-width: 0;
+  }
+  .tx-form input[type=datetime-local] { font-size: 12px; }
+  .tx-form input:focus, .tx-form select:focus {
+    outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(43,49,71,0.12);
+  }
+  .tx-form .row-actions { display: flex; gap: 6px; justify-content: flex-end; }
+
+  /* Scenario */
+  .scenarios {
+    display: flex; gap: 6px; padding: 10px 0 4px; flex-wrap: wrap;
+    border-top: 1px solid var(--border);
+  }
+  .scenarios .label { color: var(--muted); font-size: 12px; align-self: center; margin-right: 4px; }
+
+  .actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+  .empty { color: var(--muted); padding: 12px 0; text-align: center; font-size: 13px; }
+
+  .footer-note { color: var(--muted); font-size: 12px; text-align: center; margin-top: 12px; }
 
   @media (max-width: 720px) {
     .summary { grid-template-columns: repeat(2, 1fr); }
-    h1 { font-size: 19px; }
+    .card-head { grid-template-columns: 1fr auto; }
+    .card-head .metrics { grid-column: 1 / -1; justify-content: flex-start; gap: 12px; }
+    .tx-form { grid-template-columns: 1fr 1fr; }
+    .tx-form .row-actions { grid-column: 1 / -1; }
   }
 </style>
 </head>
 <body>
 <div class="container">
-  <h1>주식 수익률 계산기</h1>
-  <div class="subtitle">매수 정보를 입력하고 등락률을 조정해 평가금액과 수익률 변화를 확인하세요. (자동 저장됨)</div>
+  <h1>주식 거래 시뮬레이터</h1>
+  <div class="subtitle">매수·매도를 시간순으로 입력해 평단가 변화, 물타기·추격매수, 실현/미실현 손익을 시뮬레이션합니다.</div>
 
   <!-- Summary -->
   <section class="panel">
     <div class="section-title">전체 요약</div>
     <div class="summary">
-      <div class="cell">
-        <div class="label">총 매수금액</div>
-        <div class="value" id="sumCost">0 원</div>
-      </div>
-      <div class="cell">
-        <div class="label">총 평가금액</div>
-        <div class="value" id="sumValue">0 원</div>
-      </div>
-      <div class="cell">
-        <div class="label">총 손익</div>
-        <div class="value" id="sumPnL">0 원</div>
-      </div>
-      <div class="cell">
-        <div class="label">평균 수익률</div>
-        <div class="value" id="sumRate">0.00 %</div>
-      </div>
+      <div class="cell"><div class="label">총 매수금액</div><div class="value" id="sumInvested">0 원</div></div>
+      <div class="cell"><div class="label">총 매도금액</div><div class="value" id="sumSold">0 원</div></div>
+      <div class="cell"><div class="label">현재 평가금액</div><div class="value" id="sumValue">0 원</div></div>
+      <div class="cell"><div class="label">실현 + 미실현 손익</div><div class="value" id="sumPnL">0 원</div></div>
+      <div class="cell"><div class="label">총 수익률</div><div class="value" id="sumRate">0.00 %</div></div>
     </div>
   </section>
 
-  <!-- Market sim -->
-  <section class="panel">
-    <div class="section-title">시장 시뮬레이션</div>
-    <div class="market-row">
-      <label for="market">전체 등락률 일괄 적용</label>
-      <input type="range" id="market" min="-50" max="50" step="0.1" value="0" />
-      <div class="pct" id="marketPct">0.0 %</div>
-      <button class="btn" id="applyMarket">전 종목 적용</button>
-      <button class="btn ghost" id="resetMarket">슬라이더 0%</button>
-    </div>
-  </section>
+  <!-- Stocks -->
+  <section id="stocks"></section>
 
-  <!-- Holdings -->
-  <section class="panel">
-    <div class="section-title">보유 종목</div>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th class="col-name">종목명</th>
-            <th class="col-num">매수단가</th>
-            <th class="col-num">수량</th>
-            <th class="col-num">매수금액</th>
-            <th class="col-pct">등락률(%)</th>
-            <th class="col-num">현재가(호가)</th>
-            <th class="col-num">평가금액</th>
-            <th class="col-num">손익</th>
-            <th class="col-pct">수익률</th>
-            <th class="col-action"></th>
-          </tr>
-        </thead>
-        <tbody id="rows"></tbody>
-      </table>
-    </div>
-    <div class="actions">
-      <button class="btn" id="addRow">+ 종목 추가</button>
-      <button class="btn ghost" id="clearAll">전체 삭제</button>
-    </div>
-  </section>
+  <div class="actions">
+    <button class="btn" id="addStock">+ 종목 추가</button>
+    <button class="btn ghost" id="clearAll">전체 삭제</button>
+  </div>
 
   <div class="footer-note">데이터는 이 브라우저(localStorage)에만 저장됩니다.</div>
 </div>
 
 <script>
 (() => {
-  const STORAGE_KEY = "stock-calc-v1";
+  "use strict";
+  const STORAGE_KEY = "stock-calc-v2";
+  const OLD_KEY = "stock-calc-v1";
   const $ = (id) => document.getElementById(id);
+
+  // ---------- Formatters ----------
   const fmtKRW = (n) => {
     if (!isFinite(n)) n = 0;
     const sign = n < 0 ? "-" : "";
@@ -301,10 +221,8 @@
   };
   const fmtPrice = (n) => {
     if (!isFinite(n)) return "0";
-    // 2 decimals if fractional, else integer with thousands sep
-    if (Math.abs(n - Math.round(n)) < 0.005) {
+    if (Math.abs(n - Math.round(n)) < 0.005)
       return Math.round(n).toLocaleString("ko-KR");
-    }
     return n.toLocaleString("ko-KR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   };
   const fmtPct = (n) => {
@@ -312,191 +230,501 @@
     const sign = n > 0 ? "+" : "";
     return sign + n.toFixed(2) + " %";
   };
-  const colorClass = (n) => (n > 0 ? "up" : n < 0 ? "down" : "zero");
+  const cls = (n) => (n > 0 ? "up" : n < 0 ? "down" : "zero");
   const parseNum = (v) => {
     if (typeof v !== "string") v = String(v ?? "");
-    const cleaned = v.replace(/[,\s]/g, "");
-    const n = parseFloat(cleaned);
+    const n = parseFloat(v.replace(/[,\s]/g, ""));
     return isFinite(n) ? n : 0;
   };
+  const nowLocal = () => {
+    const d = new Date();
+    d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+    return d.toISOString().slice(0, 16);
+  };
+  const escapeAttr = (s) => String(s ?? "").replace(/[&<>"]/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
-  /** @type {{id:number,name:string,price:number,qty:number,changePct:number}[]} */
-  let holdings = load();
-  let nextId = holdings.reduce((m, h) => Math.max(m, h.id), 0) + 1;
+  // ---------- State ----------
+  /** @type {{id:number,name:string,basePrice:number,changePct:number,expanded:boolean,
+   *          transactions:{id:number,datetime:string,type:"buy"|"sell",price:number,qty:number}[]}[]} */
+  let stocks = load();
+  let nextStockId = stocks.reduce((m, s) => Math.max(m, s.id), 0) + 1;
+  let nextTxId = stocks.reduce((m, s) =>
+    Math.max(m, ...s.transactions.map(t => t.id), 0), 0) + 1;
 
   function load() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return defaultRows();
-      const data = JSON.parse(raw);
-      if (!Array.isArray(data.holdings)) return defaultRows();
-      return data.holdings.map((h, i) => ({
-        id: h.id ?? i + 1,
-        name: h.name ?? "",
-        price: Number(h.price) || 0,
-        qty: Number(h.qty) || 0,
-        changePct: Number(h.changePct) || 0,
-      }));
-    } catch {
-      return defaultRows();
-    }
+      if (raw) {
+        const data = JSON.parse(raw);
+        if (Array.isArray(data.stocks)) return data.stocks.map(normalize);
+      }
+      // migrate from v1
+      const old = localStorage.getItem(OLD_KEY);
+      if (old) {
+        const o = JSON.parse(old);
+        if (Array.isArray(o.holdings)) {
+          return o.holdings.map((h, i) => ({
+            id: i + 1,
+            name: h.name || "",
+            basePrice: Number(h.price) || 0,
+            changePct: Number(h.changePct) || 0,
+            expanded: false,
+            transactions: (h.qty > 0 && h.price > 0) ? [{
+              id: 1, datetime: nowLocal(),
+              type: "buy", price: Number(h.price), qty: Number(h.qty),
+            }] : [],
+          }));
+        }
+      }
+    } catch {}
+    return [demoStock()];
   }
-  function defaultRows() {
-    return [
-      { id: 1, name: "예시: 삼성전자", price: 70000, qty: 10, changePct: 0 },
-    ];
+  function demoStock() {
+    const t = new Date();
+    const at = (mins) => {
+      const d = new Date(t.getTime() - mins * 60000);
+      d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+      return d.toISOString().slice(0, 16);
+    };
+    return {
+      id: 1, name: "예시: 삼성전자",
+      basePrice: 70000, changePct: 0, expanded: true,
+      transactions: [
+        { id: 1, datetime: at(180), type: "buy", price: 75000, qty: 10 },
+        { id: 2, datetime: at(120), type: "buy", price: 70000, qty: 10 },
+        { id: 3, datetime: at(60),  type: "buy", price: 65000, qty: 10 },
+      ],
+    };
+  }
+  function normalize(s) {
+    return {
+      id: s.id, name: s.name || "",
+      basePrice: Number(s.basePrice) || 0,
+      changePct: Number(s.changePct) || 0,
+      expanded: !!s.expanded,
+      transactions: Array.isArray(s.transactions) ? s.transactions.map(t => ({
+        id: t.id, datetime: t.datetime || nowLocal(),
+        type: t.type === "sell" ? "sell" : "buy",
+        price: Number(t.price) || 0, qty: Number(t.qty) || 0,
+      })) : [],
+    };
   }
   function save() {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ holdings }));
-    } catch {}
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ stocks })); } catch {}
   }
 
-  function addRow() {
-    holdings.push({ id: nextId++, name: "", price: 0, qty: 0, changePct: 0 });
-    render();
-    save();
-    // focus the new row's name input
-    const tbody = $("rows");
-    const last = tbody.lastElementChild;
-    if (last) last.querySelector("input.name")?.focus();
+  // ---------- Calculations ----------
+  function sortedTxs(s) {
+    return [...s.transactions].sort((a, b) => {
+      if (a.datetime !== b.datetime) return a.datetime < b.datetime ? -1 : 1;
+      return a.id - b.id;
+    });
   }
-  function removeRow(id) {
-    holdings = holdings.filter((h) => h.id !== id);
-    render();
-    save();
-  }
-  function updateField(id, field, value) {
-    const h = holdings.find((x) => x.id === id);
-    if (!h) return;
-    if (field === "name") h.name = value;
-    else h[field] = parseNum(value);
-    renderSummary();
-    renderRow(id);
-    save();
-  }
-
-  function rowMetrics(h) {
-    const cost = h.price * h.qty;
-    const current = h.price * (1 + h.changePct / 100);
-    const value = current * h.qty;
-    const pnl = value - cost;
-    const rate = cost > 0 ? (pnl / cost) * 100 : 0;
-    return { cost, current, value, pnl, rate };
-  }
-
-  function renderRow(id) {
-    const h = holdings.find((x) => x.id === id);
-    if (!h) return;
-    const tr = document.querySelector(`tr[data-id="${id}"]`);
-    if (!tr) return;
-    const m = rowMetrics(h);
-    tr.querySelector("[data-cost]").textContent = fmtKRW(m.cost);
-    const cur = tr.querySelector("[data-current]");
-    cur.textContent = fmtPrice(m.current);
-    cur.className = colorClass(h.changePct);
-    tr.querySelector("[data-value]").textContent = fmtKRW(m.value);
-    const pnlEl = tr.querySelector("[data-pnl]");
-    pnlEl.textContent = fmtKRW(m.pnl);
-    pnlEl.className = colorClass(m.pnl);
-    const rateEl = tr.querySelector("[data-rate]");
-    rateEl.textContent = fmtPct(m.rate);
-    rateEl.className = colorClass(m.rate);
-  }
-
-  function renderSummary() {
-    let totalCost = 0, totalValue = 0;
-    for (const h of holdings) {
-      const m = rowMetrics(h);
-      totalCost += m.cost;
-      totalValue += m.value;
+  /**
+   * Replay transactions in time order using weighted-average cost basis.
+   * Sells realize PnL against the running average.
+   */
+  function replay(s) {
+    let avg = 0, qty = 0;
+    let invested = 0, sold = 0, realized = 0;
+    const steps = [];
+    for (const t of sortedTxs(s)) {
+      const before = { avg, qty };
+      if (t.type === "buy" && t.qty > 0) {
+        const newQty = qty + t.qty;
+        avg = newQty > 0 ? (avg * qty + t.price * t.qty) / newQty : 0;
+        qty = newQty;
+        invested += t.price * t.qty;
+      } else if (t.type === "sell" && t.qty > 0) {
+        const sellQty = Math.min(t.qty, qty);
+        realized += (t.price - avg) * sellQty;
+        qty -= sellQty;
+        sold += t.price * sellQty;
+        if (qty <= 0) { qty = 0; avg = 0; }
+      }
+      const deltaPct = before.avg > 0 ? ((avg - before.avg) / before.avg) * 100 : 0;
+      steps.push({ ...t, avgAfter: avg, qtyAfter: qty, deltaPct });
     }
-    const pnl = totalValue - totalCost;
-    const rate = totalCost > 0 ? (pnl / totalCost) * 100 : 0;
-    $("sumCost").textContent = fmtKRW(totalCost);
-    $("sumValue").textContent = fmtKRW(totalValue);
-    const sp = $("sumPnL");
-    sp.textContent = fmtKRW(pnl);
-    sp.className = "value " + colorClass(pnl);
-    const sr = $("sumRate");
-    sr.textContent = fmtPct(rate);
-    sr.className = "value " + colorClass(rate);
+    const currentPrice = s.basePrice * (1 + (s.changePct || 0) / 100);
+    const value = currentPrice * qty;
+    const unrealized = (currentPrice - avg) * qty;
+    const totalPnL = realized + unrealized;
+    const returnRate = invested > 0 ? (totalPnL / invested) * 100 : 0;
+    return {
+      avg, qty, invested, sold, realized, unrealized, value,
+      totalPnL, returnRate, currentPrice, steps,
+    };
   }
 
+  // ---------- Mutations ----------
+  function addStock() {
+    stocks.push({
+      id: nextStockId++, name: "", basePrice: 0, changePct: 0,
+      expanded: true, transactions: [],
+    });
+    render(); save();
+  }
+  function removeStock(id) {
+    stocks = stocks.filter(s => s.id !== id);
+    render(); save();
+  }
+  function getStock(id) { return stocks.find(s => s.id === id); }
+  function addTx(stockId, tx) {
+    const s = getStock(stockId); if (!s) return;
+    s.transactions.push({ id: nextTxId++, ...tx });
+    if (s.basePrice <= 0) s.basePrice = tx.price; // first tx sets current-price baseline
+    render(); save();
+  }
+  function removeTx(stockId, txId) {
+    const s = getStock(stockId); if (!s) return;
+    s.transactions = s.transactions.filter(t => t.id !== txId);
+    render(); save();
+  }
+  function updateStockField(id, field, v) {
+    const s = getStock(id); if (!s) return;
+    if (field === "name") s.name = v;
+    else if (field === "basePrice") s.basePrice = parseNum(v);
+    else if (field === "changePct") s.changePct = parseNum(v);
+    save();
+    renderStockBody(id);
+    renderStockHead(id);
+    renderSummary();
+  }
+  function toggleExpand(id) {
+    const s = getStock(id); if (!s) return;
+    s.expanded = !s.expanded;
+    renderStockBody(id, true);
+    save();
+  }
+
+  // ---------- Scenario presets ----------
+  function presetMultiBuy(s, prices) {
+    // 등 분량 매수 시나리오: 5분 간격, 수량 10주씩
+    const t = new Date();
+    const txs = prices.map((p, i) => {
+      const d = new Date(t.getTime() - (prices.length - i) * 5 * 60000);
+      d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+      return {
+        id: nextTxId++, datetime: d.toISOString().slice(0, 16),
+        type: "buy", price: p, qty: 10,
+      };
+    });
+    s.transactions = txs;
+    if (!s.basePrice) s.basePrice = prices[prices.length - 1];
+    save(); render();
+  }
+
+  // ---------- Render ----------
   function render() {
-    const tbody = $("rows");
-    tbody.innerHTML = "";
-    if (holdings.length === 0) {
-      const tr = document.createElement("tr");
-      tr.innerHTML = `<td colspan="10" class="empty">종목을 추가해 시작하세요.</td>`;
-      tbody.appendChild(tr);
+    const container = $("stocks");
+    container.innerHTML = "";
+    if (stocks.length === 0) {
+      const d = document.createElement("div");
+      d.className = "panel empty";
+      d.textContent = "종목을 추가해 시작하세요.";
+      container.appendChild(d);
       renderSummary();
       return;
     }
-    for (const h of holdings) {
-      const tr = document.createElement("tr");
-      tr.dataset.id = h.id;
-      tr.innerHTML = `
-        <td><input class="name" type="text" data-f="name" value="${escapeAttr(h.name)}" placeholder="종목명" /></td>
-        <td><input type="text" inputmode="decimal" data-f="price" value="${h.price || ""}" placeholder="0" /></td>
-        <td><input type="text" inputmode="decimal" data-f="qty" value="${h.qty || ""}" placeholder="0" /></td>
-        <td data-cost>0 원</td>
-        <td><input type="text" inputmode="decimal" data-f="changePct" value="${h.changePct || ""}" placeholder="0" /></td>
-        <td data-current>0</td>
-        <td data-value>0 원</td>
-        <td data-pnl>0 원</td>
-        <td data-rate>0.00 %</td>
-        <td><button class="btn danger" data-del>삭제</button></td>
-      `;
-      tbody.appendChild(tr);
-
-      tr.querySelectorAll("input").forEach((inp) => {
-        inp.addEventListener("input", (e) => {
-          updateField(h.id, e.target.dataset.f, e.target.value);
-        });
-        inp.addEventListener("focus", (e) => e.target.select());
-      });
-      tr.querySelector("[data-del]").addEventListener("click", () => {
-        if (confirm("이 종목을 삭제할까요?")) removeRow(h.id);
-      });
-
-      renderRow(h.id);
-    }
+    for (const s of stocks) container.appendChild(buildStockCard(s));
     renderSummary();
   }
 
-  function escapeAttr(s) {
-    return String(s ?? "").replace(/[&<>"]/g, (c) => ({
-      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;",
-    })[c]);
+  function buildStockCard(s) {
+    const card = document.createElement("div");
+    card.className = "stock-card";
+    card.dataset.id = s.id;
+    card.innerHTML = `
+      <div class="card-head" data-head>
+        <input class="name-input" type="text" data-name placeholder="종목명" value="${escapeAttr(s.name)}" />
+        <div class="metrics" data-metrics></div>
+        <div>
+          <button class="toggle" data-toggle title="펼치기/접기">${s.expanded ? "▴" : "▾"}</button>
+          <button class="btn danger" data-remove title="종목 삭제">삭제</button>
+        </div>
+      </div>
+      <div class="card-body ${s.expanded ? "" : "collapsed"}" data-body></div>
+    `;
+    // events
+    const nameInp = card.querySelector("[data-name]");
+    nameInp.addEventListener("input", e => updateStockField(s.id, "name", e.target.value));
+    nameInp.addEventListener("click", e => e.stopPropagation());
+
+    card.querySelector("[data-toggle]").addEventListener("click", e => {
+      e.stopPropagation(); toggleExpand(s.id);
+    });
+    card.querySelector("[data-remove]").addEventListener("click", e => {
+      e.stopPropagation();
+      if (confirm(`'${s.name || "이 종목"}' 을(를) 삭제할까요?`)) removeStock(s.id);
+    });
+    card.querySelector("[data-head]").addEventListener("click", e => {
+      if (e.target.closest("input,button")) return;
+      toggleExpand(s.id);
+    });
+    renderStockHead(s.id, card);
+    if (s.expanded) renderStockBody(s.id, false, card);
+    return card;
   }
 
-  // Market slider
-  const market = $("market");
-  const marketPct = $("marketPct");
-  market.addEventListener("input", () => {
-    marketPct.textContent = (+market.value).toFixed(1) + " %";
-    marketPct.className = "pct " + colorClass(+market.value);
-  });
-  $("applyMarket").addEventListener("click", () => {
-    const v = parseFloat(market.value) || 0;
-    holdings.forEach((h) => (h.changePct = v));
-    render();
-    save();
-  });
-  $("resetMarket").addEventListener("click", () => {
-    market.value = 0;
-    marketPct.textContent = "0.0 %";
-    marketPct.className = "pct zero";
-  });
+  function renderStockHead(id, cardEl) {
+    const card = cardEl || document.querySelector(`.stock-card[data-id="${id}"]`);
+    if (!card) return;
+    const s = getStock(id); if (!s) return;
+    const r = replay(s);
+    const m = card.querySelector("[data-metrics]");
+    const avgTxt = r.qty > 0 ? `평단 <b>${fmtPrice(r.avg)}</b>` : `평단 -`;
+    m.innerHTML = `
+      <div>${avgTxt}</div>
+      <div>현재가 <b class="${cls(s.changePct)}">${fmtPrice(r.currentPrice)}</b></div>
+      <div>보유 <b>${r.qty.toLocaleString("ko-KR")}주</b></div>
+      <div>손익 <b class="${cls(r.totalPnL)}">${fmtKRW(r.totalPnL)}</b> <span class="${cls(r.returnRate)}">(${fmtPct(r.returnRate)})</span></div>
+    `;
+    card.querySelector("[data-toggle]").textContent = s.expanded ? "▴" : "▾";
+  }
 
-  $("addRow").addEventListener("click", addRow);
-  $("clearAll").addEventListener("click", () => {
-    if (holdings.length === 0) return;
-    if (confirm("모든 종목을 삭제할까요?")) {
-      holdings = [];
-      render();
+  function renderStockBody(id, justToggle, cardEl) {
+    const card = cardEl || document.querySelector(`.stock-card[data-id="${id}"]`);
+    if (!card) return;
+    const s = getStock(id); if (!s) return;
+    const body = card.querySelector("[data-body]");
+    body.classList.toggle("collapsed", !s.expanded);
+    if (!s.expanded) return;
+    if (justToggle && body.dataset.built === "1") return;
+
+    const r = replay(s);
+    body.innerHTML = `
+      <div class="price-row">
+        <label for="bp-${id}">현재가(호가)</label>
+        <input id="bp-${id}" type="text" inputmode="decimal" data-bp value="${s.basePrice || ""}" placeholder="0" style="width: 100px; padding: 6px 8px; border:1px solid var(--border); border-radius:6px; text-align:right; font-variant-numeric: tabular-nums;" />
+        <input type="range" min="-50" max="50" step="0.1" value="${s.changePct || 0}" data-cp />
+        <div class="pct ${cls(s.changePct)}" data-cppct>${fmtPct(s.changePct || 0)}</div>
+        <div class="now ${cls(s.changePct)}" data-now>${fmtPrice(r.currentPrice)}</div>
+      </div>
+
+      <div class="chart-wrap">${renderChartSVG(s, r)}</div>
+
+      <div class="section-title" style="margin-top: 8px;">거래 내역 (시간순)</div>
+      ${renderTxTable(s, r)}
+
+      <form class="tx-form" data-form>
+        <input type="datetime-local" data-f-dt value="${nowLocal()}" />
+        <select data-f-type>
+          <option value="buy">매수</option>
+          <option value="sell">매도</option>
+        </select>
+        <input type="text" inputmode="decimal" data-f-price placeholder="단가" />
+        <input type="text" inputmode="decimal" data-f-qty placeholder="수량" />
+        <div class="row-actions">
+          <button type="submit" class="btn buy sm" data-submit>+ 거래 추가</button>
+        </div>
+      </form>
+
+      <div class="scenarios">
+        <span class="label">빠른 시나리오</span>
+        <button class="btn ghost sm" data-preset="mul">물타기 예시 채우기</button>
+        <button class="btn ghost sm" data-preset="chase">추격매수 예시 채우기</button>
+        <button class="btn ghost sm" data-preset="clear">거래 비우기</button>
+      </div>
+    `;
+    body.dataset.built = "1";
+
+    // Wire up events
+    const bp = body.querySelector("[data-bp]");
+    bp.addEventListener("input", e => updateStockField(id, "basePrice", e.target.value));
+
+    const cp = body.querySelector("[data-cp]");
+    cp.addEventListener("input", e => {
+      s.changePct = parseFloat(e.target.value) || 0;
+      const r2 = replay(s);
+      body.querySelector("[data-cppct]").textContent = fmtPct(s.changePct);
+      body.querySelector("[data-cppct]").className = "pct " + cls(s.changePct);
+      const now = body.querySelector("[data-now]");
+      now.textContent = fmtPrice(r2.currentPrice);
+      now.className = "now " + cls(s.changePct);
+      renderStockHead(id);
+      renderSummary();
       save();
+    });
+    cp.addEventListener("change", () => {
+      // re-render chart/table after slider release
+      renderStockBody(id, false);
+    });
+
+    // Form submit
+    body.querySelector("[data-form]").addEventListener("submit", e => {
+      e.preventDefault();
+      const dt = body.querySelector("[data-f-dt]").value || nowLocal();
+      const type = body.querySelector("[data-f-type]").value;
+      const price = parseNum(body.querySelector("[data-f-price]").value);
+      const qty = parseNum(body.querySelector("[data-f-qty]").value);
+      if (price <= 0 || qty <= 0) { alert("단가와 수량을 입력하세요."); return; }
+      addTx(id, { datetime: dt, type, price, qty });
+    });
+
+    // Type button color toggle
+    const typeSel = body.querySelector("[data-f-type]");
+    const submitBtn = body.querySelector("[data-submit]");
+    const refreshSubmit = () => {
+      submitBtn.classList.toggle("buy", typeSel.value === "buy");
+      submitBtn.classList.toggle("sell", typeSel.value === "sell");
+      submitBtn.textContent = typeSel.value === "buy" ? "+ 매수 추가" : "+ 매도 추가";
+    };
+    typeSel.addEventListener("change", refreshSubmit);
+    refreshSubmit();
+
+    // Delete tx buttons
+    body.querySelectorAll("[data-del-tx]").forEach(b => {
+      b.addEventListener("click", () => removeTx(id, +b.dataset.delTx));
+    });
+
+    // Presets
+    body.querySelectorAll("[data-preset]").forEach(b => {
+      b.addEventListener("click", () => {
+        const p = b.dataset.preset;
+        if (p === "clear") {
+          s.transactions = []; save(); render();
+        } else if (p === "mul") {
+          // 물타기: 가격이 점점 떨어지는데 계속 매수 → 평단가 낮아짐
+          presetMultiBuy(s, [80000, 70000, 60000, 50000]);
+          s.basePrice = 55000;
+          save(); render();
+        } else if (p === "chase") {
+          // 추격매수: 가격이 점점 오르는데 계속 매수 → 평단가 높아짐
+          presetMultiBuy(s, [50000, 60000, 70000, 80000]);
+          s.basePrice = 82000;
+          save(); render();
+        }
+      });
+    });
+  }
+
+  function renderTxTable(s, r) {
+    if (r.steps.length === 0) {
+      return `<div class="empty">거래가 없습니다. 아래 폼으로 매수/매도를 추가해 보세요.</div>`;
+    }
+    const rows = r.steps.map(st => {
+      const tag = st.type === "buy"
+        ? `<span class="tag buy">매수</span>`
+        : `<span class="tag sell">매도</span>`;
+      const deltaTxt = st.type === "buy" && st.deltaPct !== 0
+        ? `<span class="delta ${cls(st.deltaPct)}">${st.deltaPct > 0 ? "추격 " : "물타기 "}${st.deltaPct > 0 ? "+" : ""}${st.deltaPct.toFixed(2)}%</span>`
+        : st.type === "sell"
+          ? `<span class="delta ${cls((st.price - (s.transactions.find(x => x.id === st.id) ? 0 : 0)))}"></span>`
+          : "";
+      return `<tr>
+        <td>${st.datetime.replace("T", " ")}</td>
+        <td>${tag}</td>
+        <td>${fmtPrice(st.price)}</td>
+        <td>${st.qty.toLocaleString("ko-KR")}</td>
+        <td>${st.avgAfter > 0 ? fmtPrice(st.avgAfter) : "-"} ${deltaTxt}</td>
+        <td>${st.qtyAfter.toLocaleString("ko-KR")}</td>
+        <td><button class="btn danger" data-del-tx="${st.id}">×</button></td>
+      </tr>`;
+    }).join("");
+    return `
+      <table class="tx-table">
+        <thead>
+          <tr>
+            <th>시간</th><th>구분</th><th>단가</th><th>수량</th>
+            <th>평단(이후)</th><th>잔여수량</th><th></th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `;
+  }
+
+  function renderChartSVG(s, r) {
+    const steps = r.steps;
+    if (steps.length === 0) return "";
+    const W = 600, H = 120, padL = 36, padR = 8, padT = 10, padB = 18;
+    const innerW = W - padL - padR, innerH = H - padT - padB;
+    const times = steps.map(st => new Date(st.datetime).getTime());
+    times.push(Date.now());
+    const tMin = Math.min(...times), tMax = Math.max(...times);
+    const tSpan = Math.max(tMax - tMin, 1);
+    const prices = [...steps.map(st => st.price), r.currentPrice];
+    const avgs = steps.map(st => st.avgAfter).filter(v => v > 0);
+    const yVals = [...prices, ...avgs];
+    const yMin = Math.min(...yVals), yMax = Math.max(...yVals);
+    const ySpan = Math.max(yMax - yMin, yMax * 0.01, 1);
+    const yPad = ySpan * 0.1;
+    const yLo = yMin - yPad, yHi = yMax + yPad;
+    const xOf = (t) => padL + ((t - tMin) / tSpan) * innerW;
+    const yOf = (p) => padT + (1 - (p - yLo) / (yHi - yLo)) * innerH;
+
+    // Avg-cost polyline (after each tx)
+    const avgPts = steps
+      .filter(st => st.avgAfter > 0)
+      .map(st => `${xOf(new Date(st.datetime).getTime())},${yOf(st.avgAfter)}`)
+      .join(" ");
+
+    // Current-price horizontal
+    const cpY = yOf(r.currentPrice);
+
+    // Markers
+    const markers = steps.map(st => {
+      const x = xOf(new Date(st.datetime).getTime());
+      const y = yOf(st.price);
+      if (st.type === "buy") {
+        return `<polygon points="${x},${y - 5} ${x - 4},${y + 3} ${x + 4},${y + 3}" fill="var(--up)" />`;
+      } else {
+        return `<polygon points="${x},${y + 5} ${x - 4},${y - 3} ${x + 4},${y - 3}" fill="var(--down)" />`;
+      }
+    }).join("");
+
+    // Y axis labels (min, mid, max)
+    const labels = [yLo, (yLo + yHi) / 2, yHi].map(v =>
+      `<text x="2" y="${yOf(v) + 3}" font-size="10" fill="#9aa0ad">${fmtPrice(v)}</text>`
+    ).join("");
+
+    // X axis labels: start and end times (HH:mm or MM-DD)
+    const formatT = (ms) => {
+      const d = new Date(ms);
+      return `${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+    };
+
+    return `
+      <svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-label="가격 차트">
+        <line x1="${padL}" y1="${padT + innerH}" x2="${W - padR}" y2="${padT + innerH}" stroke="#e3e6ee" />
+        <line x1="${padL}" y1="${cpY}" x2="${W - padR}" y2="${cpY}" stroke="#9aa0ad" stroke-dasharray="4 3" />
+        ${avgPts ? `<polyline fill="none" stroke="#f59f00" stroke-width="2" points="${avgPts}" />` : ""}
+        ${markers}
+        ${labels}
+        <text x="${padL}" y="${H - 4}" font-size="10" fill="#9aa0ad">${formatT(tMin)}</text>
+        <text x="${W - padR}" y="${H - 4}" font-size="10" text-anchor="end" fill="#9aa0ad">${formatT(tMax)}</text>
+        <text x="${W - padR}" y="${cpY - 4}" font-size="10" text-anchor="end" fill="#6b7280">현재가 ${fmtPrice(r.currentPrice)}</text>
+      </svg>
+    `;
+  }
+
+  function renderSummary() {
+    let invested = 0, sold = 0, value = 0, pnl = 0;
+    for (const s of stocks) {
+      const r = replay(s);
+      invested += r.invested;
+      sold += r.sold;
+      value += r.value;
+      pnl += r.totalPnL;
+    }
+    const rate = invested > 0 ? (pnl / invested) * 100 : 0;
+    $("sumInvested").textContent = fmtKRW(invested);
+    $("sumSold").textContent = fmtKRW(sold);
+    $("sumValue").textContent = fmtKRW(value);
+    const sp = $("sumPnL");
+    sp.textContent = fmtKRW(pnl);
+    sp.className = "value " + cls(pnl);
+    const sr = $("sumRate");
+    sr.textContent = fmtPct(rate);
+    sr.className = "value " + cls(rate);
+  }
+
+  $("addStock").addEventListener("click", addStock);
+  $("clearAll").addEventListener("click", () => {
+    if (stocks.length === 0) return;
+    if (confirm("모든 종목과 거래 내역을 삭제할까요?")) {
+      stocks = []; render(); save();
     }
   });
 
