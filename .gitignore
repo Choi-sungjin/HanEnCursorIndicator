@@ -14,7 +14,8 @@ dist/*/
 !/dist/images/**
 
 # Commercial builds are distributed through the website/license flow, not GitHub.
-/dist/HanEnCursorIndicator.exe
+/dist/*.exe
+/dist/*.wav
 
 # Web launch MVP
 /web/node_modules/

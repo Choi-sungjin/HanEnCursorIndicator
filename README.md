@@ -190,12 +190,27 @@ Right-click the tray icon and open `미니미 색상`.
 - `글씨 색상`: choose separate face-label colors for `한`, `en`, and `EN`.
 - The face label stays readable while the body/clothing area is recolored.
 
-## Voice / Supertone TTS
+## Voice / TTS (Supertonic local by default, Supertone API optional)
 
 Right-click the tray icon and open `보이스`.
 
 - Turn on `드래그 텍스트 읽기` to read selected text after a mouse drag.
-- Open `Supertone API 설정` and enter your own API Key, Voice ID, language, model, style, speed, and max text length.
+- `단축키 설정` lets you bind a global hotkey (e.g. `Ctrl+Alt+V`) that toggles `드래그 텍스트 읽기` on/off from anywhere. Click the input box, press the desired key combo, and save. The combo must include `Ctrl` or `Alt`; use `지우기` to remove the hotkey.
+- Two TTS engines are available under `TTS 엔진`:
+  - `Supertonic 로컬 (무료)` — **default**. Uses the open-source on-device [Supertonic](https://github.com/supertone-inc/supertonic) engine. No API key needed.
+  - `Supertone API (클라우드)` — the original cloud engine. Requires an API Key and Voice ID.
+
+### Supertonic local engine (default)
+
+- One-time setup: `pip install "supertonic[serve]"` (the app looks for `supertonic.exe` in `%USERPROFILE%\anaconda3\Scripts`, `%USERPROFILE%\miniconda3\Scripts`, then `PATH`).
+- The first synthesis downloads the `supertonic-3` model from Hugging Face automatically (~a minute).
+- The app starts a local server (`supertonic serve` on `127.0.0.1:7788`) in the background when voice is enabled, and stops it on exit if the app started it.
+- Pick the local voice in `보이스 설정`: `성별` checkboxes (남성/여성) plus the `톤/목소리` slider (1–5) select among the 10 built-in styles (`F1`–`F5`, `M1`–`M5`).
+- `속도` slider (50–200%) controls speech speed (Supertonic clamps to 70–200%); `품질(스텝)` slider (1–32, default 8) trades synthesis quality against speed. Supertonic-3 has no separate pitch parameter — tone variation comes from the voice styles.
+
+### Supertone API engine (optional)
+
+- Open `보이스 설정`, switch `TTS 엔진` to `Supertone API`, and enter your own API Key, Voice ID, language, model, style, speed, and max text length.
 - The API Key is saved per Windows user with Windows DPAPI encryption at `%APPDATA%\HanEnCursorIndicator\supertone.key`.
 - The API Key is not saved in `settings.ini`, not included in Git, and is never shown again in the settings window.
 - Drag selection uses a brief `Ctrl+C` copy, sanitizes the copied text, restores the previous clipboard data, and then calls Supertone.
