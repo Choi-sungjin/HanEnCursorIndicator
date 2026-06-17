@@ -5,16 +5,6 @@ Windows-only tray app that shows the current Korean/English input mode next to t
 
 ![HanEn Cursor Indicator demo](assets/demo.gif)
 
-## Commercial Launch / 수익화 출시
-
-This public repository is now treated as the product documentation, demo, issue, and launch-prep repository.
-The paid executable and production secrets are distributed through the web license flow, not through GitHub.
-
-- Web MVP: [`web/`](web/)
-- Database schema: [`web/supabase/schema.sql`](web/supabase/schema.sql)
-- Launch checklist: [`docs/commercial-launch-checklist.md`](docs/commercial-launch-checklist.md)
-- Target distribution: website checkout first, Microsoft Store second
-- First product: `Personal Lifetime`, 2 PC activations, 14-day offline grace period
 
 ## Usage Example / 사용 예시
 
