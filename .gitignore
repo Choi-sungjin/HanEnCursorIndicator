@@ -26,3 +26,14 @@ dist/*/
 /web/.env
 /web/.env.local
 /web/.env.*.local
+
+# Android video downloader app
+/android/video-downloader/local.properties
+/android/video-downloader/.gradle/
+/android/video-downloader/.idea/
+/android/video-downloader/*/build/
+/android/video-downloader/*/*/build/
+/android/video-downloader/.kotlin/
+*.apk
+*.aab
+
