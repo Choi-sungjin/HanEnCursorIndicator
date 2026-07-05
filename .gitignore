@@ -27,6 +27,9 @@ dist/*/
 /web/.env.local
 /web/.env.*.local
 
+# PC video downloader build output
+/pc/video-downloader/VideoDownloader.exe
+
 # Android video downloader app
 /android/video-downloader/local.properties
 /android/video-downloader/.gradle/
