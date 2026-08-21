@@ -6,6 +6,7 @@ using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Globalization;
 using System.IO;
+using System.IO.Compression;
 using System.Net;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -231,8 +232,31 @@ namespace CursorImeIndicator
         public const string VoiceEngineSupertonic = "Supertonic \uB85C\uCEEC (\uBB34\uB8CC)";
         public const string VoiceEngineSupertoneApi = "Supertone API (\uD074\uB77C\uC6B0\uB4DC)";
         public const string VoiceLocalVoice = "\uB85C\uCEEC \uBCF4\uC774\uC2A4";
-        public const string VoiceLocalMissing = "Supertonic \uC124\uCE58 \uD544\uC694: pip install \"supertonic[serve]\"";
+        public const string VoiceLocalMissing = "Supertonic \uB85C\uCEEC \uC74C\uC131\uC774 \uC124\uCE58\uB418\uC5B4 \uC788\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4. \uD2B8\uB808\uC774 \uBA54\uB274 > \uBCF4\uC774\uC2A4 > \uB85C\uCEEC \uC74C\uC131 \uC124\uCE58\uB97C \uC2E4\uD589\uD558\uC138\uC694.";
         public const string VoiceLocalNotReady = "Supertonic \uB85C\uCEEC \uC5D4\uC9C4\uC774 \uC900\uBE44\uB418\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4. \uC7A0\uC2DC \uD6C4 \uB2E4\uC2DC \uC2DC\uB3C4\uD558\uC138\uC694.";
+        public const string VoiceLocalSetupMenu = "\uB85C\uCEEC \uC74C\uC131 \uC124\uCE58/\uC810\uAC80";
+        public const string VoiceLocalSetupTitle = "Supertonic \uB85C\uCEEC \uC74C\uC131 \uC124\uCE58";
+        public const string VoiceLocalSetupIntro = "\uC624\uD508\uC18C\uC2A4 Supertonic 3 \uC5D4\uC9C4\uC744 \uC774 PC\uC5D0 \uC790\uB3D9\uC73C\uB85C \uC124\uCE58\uD569\uB2C8\uB2E4. \uC804\uC6A9 Python \uD658\uACBD\uACFC \uC74C\uC131 \uBAA8\uB378\uC744 \uB0B4\uB824\uBC1B\uAE30 \uB54C\uBB38\uC5D0 \uCC98\uC74C \uD55C \uBC88\uC740 \uBA87 \uBD84 \uAC78\uB9BD\uB2C8\uB2E4. \uC124\uCE58\uAC00 \uB05D\uB098\uBA74 \uC778\uD130\uB137 \uC5C6\uC774 \uB3D9\uC791\uD558\uACE0, API \uD0A4\uB3C4 \uD544\uC694 \uC5C6\uC2B5\uB2C8\uB2E4.";
+        public const string VoiceLocalInstallConfirm = "\uC9C0\uAE08 \uC124\uCE58\uB97C \uC2DC\uC791\uD569\uB2C8\uB2E4.\n\n\u00B7 \uC124\uCE58 \uC704\uCE58: %LOCALAPPDATA%\\HanEnCursorIndicator\\supertonic\n\u00B7 \uB0B4\uB824\uBC1B\uB294 \uC591: \uC57D 600MB (\uD30C\uC774\uC36C \uD328\uD0A4\uC9C0 + \uC74C\uC131 \uBAA8\uB378)\n\u00B7 \uAD00\uB9AC\uC790 \uAD8C\uD55C\uC740 \uD544\uC694 \uC5C6\uC73C\uBA70, \uC774\uBBF8 \uC124\uCE58\uB41C Python\uC740 \uAC74\uB4DC\uB9AC\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.\n\n\uACC4\uC18D\uD560\uAE4C\uC694?";
+        public const string VoiceLocalCancelConfirm = "\uC124\uCE58\uAC00 \uC9C4\uD589 \uC911\uC785\uB2C8\uB2E4. \uC9C0\uAE08 \uB2EB\uC73C\uBA74 \uC124\uCE58\uAC00 \uC911\uB2E8\uB429\uB2C8\uB2E4. \uB2EB\uC744\uAE4C\uC694?";
+        public const string VoiceLocalChecking = "\uD655\uC778 \uC911...";
+        public const string VoiceLocalReady = "\uC124\uCE58 \uC644\uB8CC - \uBC14\uB85C \uC0AC\uC6A9\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4.";
+        public const string VoiceLocalNeedsServe = "supertonic\uC740 \uC788\uC9C0\uB9CC serve \uD655\uC7A5\uC774 \uC5C6\uC2B5\uB2C8\uB2E4. [\uC124\uCE58]\uB97C \uB204\uB974\uBA74 \uB9C8\uC800 \uBC1B\uC2B5\uB2C8\uB2E4.";
+        public const string VoiceLocalNeedsInstall = "\uC544\uC9C1 \uC124\uCE58\uB418\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4. [\uC124\uCE58]\uB97C \uB204\uB974\uBA74 \uC790\uB3D9\uC73C\uB85C \uBC1B\uC2B5\uB2C8\uB2E4.";
+        public const string VoiceLocalNeedsPython = "\uC4F8 \uC218 \uC788\uB294 Python\uC744 \uCC3E\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4. [\uC124\uCE58]\uB97C \uB204\uB974\uBA74 \uC804\uC6A9 Python\uBD80\uD130 \uBC1B\uC2B5\uB2C8\uB2E4.";
+        public const string VoiceLocalInstall = "\uC124\uCE58";
+        public const string VoiceLocalReinstall = "\uB2E4\uC2DC \uC124\uCE58";
+        public const string VoiceLocalRecheck = "\uB2E4\uC2DC \uD655\uC778";
+        public const string VoiceLocalOpenFolder = "\uC124\uCE58 \uD3F4\uB354 \uC5F4\uAE30";
+        public const string VoiceLocalPickPython = "Python \uC9C1\uC811 \uC9C0\uC815";
+        public const string VoiceLocalPythonInvalid = "\uC774 python.exe\uB294 \uC4F8 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4. Python 3.9 \uC774\uC0C1\uC778\uC9C0 \uD655\uC778\uD558\uC138\uC694.";
+        public const string VoiceLocalCancelInstall = "\uC124\uCE58 \uC911\uB2E8";
+        public const string VoiceLocalInstalling = "\uC124\uCE58 \uC911\uC785\uB2C8\uB2E4. \uCC3D\uC744 \uB2EB\uC9C0 \uB9D0\uACE0 \uAE30\uB2E4\uB824 \uC8FC\uC138\uC694.";
+        public const string VoiceLocalInstallDone = "\uC124\uCE58\uAC00 \uB05D\uB0AC\uC2B5\uB2C8\uB2E4. \uB85C\uCEEC \uC74C\uC131\uC744 \uBC14\uB85C \uC4F8 \uC218 \uC788\uC2B5\uB2C8\uB2E4.";
+        public const string VoiceLocalInstallFailed = "\uC124\uCE58 \uC2E4\uD328: ";
+        public const string VoiceLocalInstallCancelled = "\uC124\uCE58\uB97C \uC911\uB2E8\uD588\uC2B5\uB2C8\uB2E4.";
+        public const string VoiceLocalSetupPrompt = "Supertonic \uB85C\uCEEC \uC74C\uC131\uC774 \uC544\uC9C1 \uC124\uCE58\uB418\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4. \uC9C0\uAE08 \uC124\uCE58\uD560\uAE4C\uC694?";
+        public const string VoiceLocalUsingPython = "\uC0AC\uC6A9 \uC911\uC778 Python: ";
         public const string VoiceGender = "\uC131\uBCC4";
         public const string GenderMale = "\uB0A8\uC131";
         public const string GenderFemale = "\uC5EC\uC131";
@@ -303,6 +327,8 @@ namespace CursorImeIndicator
         private FaceCenterSettingsForm faceCenterSettingsForm;
         private ImageSelectionForm imageSelectionForm;
         private VoiceSettingsForm voiceSettingsForm;
+        private SupertonicSetupForm supertonicSetupForm;
+        private bool supertonicSetupPromptShown;
         private LicenseRegistrationForm licenseRegistrationForm;
         private SelectionDragWatcher selectionDragWatcher;
         private bool enabled = true;
@@ -473,10 +499,50 @@ namespace CursorImeIndicator
             menu.DropDownItems.Add(voiceEnabledItem);
             menu.DropDownItems.Add(new ToolStripMenuItem(TextResources.VoiceStopMenu, null, delegate { OnVoiceStopHotkeyPressed(); }));
             menu.DropDownItems.Add(engineMenu);
+            menu.DropDownItems.Add(new ToolStripMenuItem(TextResources.VoiceLocalSetupMenu, null, OnOpenSupertonicSetup));
             menu.DropDownItems.Add(new ToolStripMenuItem(TextResources.VoiceHotkeyMenu, null, OnOpenHotkeySettings));
             menu.DropDownItems.Add(new ToolStripMenuItem(TextResources.VoiceSettings, null, OnOpenVoiceSettings));
             menu.DropDownItems.Add(new ToolStripMenuItem(TextResources.VoiceTestClipboard, null, OnVoiceTestClipboard));
             return menu;
+        }
+
+        private void OnOpenSupertonicSetup(object sender, EventArgs e)
+        {
+            OpenSupertonicSetup();
+        }
+
+        private void OpenSupertonicSetup()
+        {
+            if (supertonicSetupForm == null || supertonicSetupForm.IsDisposed)
+                supertonicSetupForm = new SupertonicSetupForm(voiceSettings, OnSupertonicSetupChanged);
+
+            supertonicSetupForm.Show();
+            supertonicSetupForm.Activate();
+            supertonicSetupForm.BeginDetect();
+        }
+
+        private void OnSupertonicSetupChanged()
+        {
+            supertonicSetupPromptShown = false;
+            SupertonicSetup.InvalidateCache();
+            if (voiceSettingsForm != null && !voiceSettingsForm.IsDisposed)
+                voiceSettingsForm.RefreshLocalStatus();
+
+            WarmUpLocalEngineIfNeeded();
+        }
+
+        // The local engine can only report "not installed" once synthesis is attempted, so the
+        // offer to install is made there rather than up front. Ask once per session: a repeated
+        // dialog on every drag would be worse than the balloon it replaces.
+        private void OfferSupertonicSetup()
+        {
+            if (supertonicSetupPromptShown)
+                return;
+
+            supertonicSetupPromptShown = true;
+            DialogResult answer = MessageBox.Show(TextResources.VoiceLocalSetupPrompt, TextResources.VoiceLocalSetupTitle, MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+            if (answer == DialogResult.Yes)
+                OpenSupertonicSetup();
         }
 
         private void OnOpenHotkeySettings(object sender, EventArgs e)
@@ -868,13 +934,13 @@ namespace CursorImeIndicator
         {
             if (voiceSettingsForm == null || voiceSettingsForm.IsDisposed)
             {
-                voiceSettingsForm = new VoiceSettingsForm(voiceSettings, OnVoiceSettingsSaved);
+                voiceSettingsForm = new VoiceSettingsForm(voiceSettings, OnVoiceSettingsSaved, OpenSupertonicSetup);
                 voiceSettingsForm.FormClosed += OnVoiceSettingsFormClosed;
             }
 
-            voiceSettingsForm.Reload();
             voiceSettingsForm.Show();
             voiceSettingsForm.Activate();
+            voiceSettingsForm.Reload();
         }
 
         private void OnVoiceSettingsFormClosed(object sender, FormClosedEventArgs e)
@@ -1100,6 +1166,7 @@ namespace CursorImeIndicator
             ThreadPool.QueueUserWorkItem(delegate
             {
                 string error = null;
+                bool notInstalled = false;
                 try
                 {
                     string audioPath = useLocalEngine
@@ -1117,6 +1184,12 @@ namespace CursorImeIndicator
                         VoiceDebugLog.Write("play done");
                     }
                 }
+                catch (SupertonicNotInstalledException ex)
+                {
+                    error = ex.Message;
+                    notInstalled = true;
+                    VoiceDebugLog.Write("synth FAILED: not installed");
+                }
                 catch (Exception ex)
                 {
                     error = ex.Message;
@@ -1126,6 +1199,12 @@ namespace CursorImeIndicator
                 PostToUi(delegate
                 {
                     voiceBusy = false;
+                    if (notInstalled)
+                    {
+                        OfferSupertonicSetup();
+                        return;
+                    }
+
                     if (!string.IsNullOrEmpty(error))
                         ShowVoiceBalloon(TextResources.VoiceFailed + error, 4500);
                 });
@@ -4363,12 +4442,15 @@ namespace CursorImeIndicator
         private readonly ComboBox modelCombo;
         private readonly TextBox styleBox;
         private readonly NumericUpDown maxTextLengthNumeric;
+        private readonly Label localStatusLabel;
+        private readonly Action openSetup;
         private bool suppressGenderEvents;
 
-        public VoiceSettingsForm(VoiceSettings settings, Action onSaved)
+        public VoiceSettingsForm(VoiceSettings settings, Action onSaved, Action openSetup)
         {
             this.settings = settings;
             this.onSaved = onSaved;
+            this.openSetup = openSetup;
 
             Text = TextResources.VoiceSettings;
             FormBorderStyle = FormBorderStyle.FixedToolWindow;
@@ -4377,7 +4459,7 @@ namespace CursorImeIndicator
             ShowInTaskbar = false;
             TopMost = true;
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(500, 540);
+            ClientSize = new Size(500, 580);
 
             enabledCheck = new CheckBox();
             enabledCheck.Text = TextResources.VoiceOnDrag;
@@ -4518,21 +4600,32 @@ namespace CursorImeIndicator
             maxTextLengthNumeric.Minimum = 1;
             maxTextLengthNumeric.Maximum = VoiceSettings.MaxAllowedTextLength;
 
+            Button localSetupButton = new Button();
+            localSetupButton.Text = TextResources.VoiceLocalSetupMenu;
+            localSetupButton.Location = new Point(14, 455);
+            localSetupButton.Size = new Size(150, 28);
+            localSetupButton.Click += OnLocalSetupClicked;
+
+            localStatusLabel = new Label();
+            localStatusLabel.Location = new Point(172, 461);
+            localStatusLabel.Size = new Size(306, 20);
+            localStatusLabel.AutoEllipsis = true;
+
             Button clearKeyButton = new Button();
             clearKeyButton.Text = TextResources.ClearApiKey;
-            clearKeyButton.Location = new Point(14, 460);
+            clearKeyButton.Location = new Point(14, 500);
             clearKeyButton.Size = new Size(116, 28);
             clearKeyButton.Click += OnClearApiKeyClicked;
 
             Button saveButton = new Button();
             saveButton.Text = TextResources.Save;
-            saveButton.Location = new Point(318, 496);
+            saveButton.Location = new Point(318, 536);
             saveButton.Size = new Size(76, 28);
             saveButton.Click += OnSaveClicked;
 
             Button closeButton = new Button();
             closeButton.Text = TextResources.Close;
-            closeButton.Location = new Point(402, 496);
+            closeButton.Location = new Point(402, 536);
             closeButton.Size = new Size(76, 28);
             closeButton.Click += OnCloseClicked;
 
@@ -4564,6 +4657,8 @@ namespace CursorImeIndicator
             Controls.Add(styleBox);
             Controls.Add(maxTextLengthLabel);
             Controls.Add(maxTextLengthNumeric);
+            Controls.Add(localSetupButton);
+            Controls.Add(localStatusLabel);
             Controls.Add(clearKeyButton);
             Controls.Add(saveButton);
             Controls.Add(closeButton);
@@ -4627,6 +4722,48 @@ namespace CursorImeIndicator
             styleBox.Text = settings.Style;
             maxTextLengthNumeric.Value = VoiceSettings.ClampMaxTextLength(settings.MaxTextLength);
             UpdateApiKeyStatus();
+            RefreshLocalStatus();
+        }
+
+        private void OnLocalSetupClicked(object sender, EventArgs e)
+        {
+            if (openSetup != null)
+                openSetup();
+        }
+
+        // Probing spawns a python process per candidate, so it runs off the UI thread and the
+        // dialog opens immediately with a placeholder.
+        public void RefreshLocalStatus()
+        {
+            localStatusLabel.Text = TextResources.VoiceLocalChecking;
+
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                SupertonicStatus status = SupertonicSetup.Detect(true);
+                BeginInvokeIfAlive(delegate
+                {
+                    if (status.IsReady)
+                        localStatusLabel.Text = TextResources.VoiceLocalReady;
+                    else if (status.State == SupertonicState.MissingServe)
+                        localStatusLabel.Text = TextResources.VoiceLocalNeedsServe;
+                    else
+                        localStatusLabel.Text = TextResources.VoiceLocalNeedsInstall;
+                });
+            });
+        }
+
+        private void BeginInvokeIfAlive(Action action)
+        {
+            if (IsDisposed || !IsHandleCreated)
+                return;
+
+            try
+            {
+                BeginInvoke(action);
+            }
+            catch
+            {
+            }
         }
 
         private static Label CreateLabel(string text, int x, int y)
@@ -4701,6 +4838,349 @@ namespace CursorImeIndicator
         private void UpdateApiKeyStatus()
         {
             apiKeyStatusLabel.Text = VoiceSettings.HasApiKey() ? TextResources.ApiKeySaved : TextResources.ApiKeyMissing;
+        }
+    }
+
+    internal sealed class SupertonicSetupForm : Form
+    {
+        private readonly VoiceSettings settings;
+        private readonly Action onChanged;
+        private readonly Label statusLabel;
+        private readonly TextBox logBox;
+        private readonly Button installButton;
+        private readonly Button recheckButton;
+        private readonly Button cancelButton;
+        private readonly Button folderButton;
+        private readonly Button pickPythonButton;
+        private SupertonicInstaller installer;
+        private bool busy;
+
+        public SupertonicSetupForm(VoiceSettings settings, Action onChanged)
+        {
+            this.settings = settings;
+            this.onChanged = onChanged;
+
+            Text = TextResources.VoiceLocalSetupTitle;
+            FormBorderStyle = FormBorderStyle.FixedToolWindow;
+            MaximizeBox = false;
+            MinimizeBox = false;
+            ShowInTaskbar = false;
+            TopMost = true;
+            StartPosition = FormStartPosition.CenterScreen;
+            ClientSize = new Size(700, 428);
+
+            Label introLabel = new Label();
+            introLabel.Text = TextResources.VoiceLocalSetupIntro;
+            introLabel.Location = new Point(14, 12);
+            introLabel.Size = new Size(672, 52);
+
+            statusLabel = new Label();
+            statusLabel.Location = new Point(14, 70);
+            statusLabel.Size = new Size(672, 40);
+            statusLabel.AutoEllipsis = true;
+
+            logBox = new TextBox();
+            logBox.Location = new Point(14, 114);
+            logBox.Size = new Size(672, 250);
+            logBox.Multiline = true;
+            logBox.ReadOnly = true;
+            logBox.ScrollBars = ScrollBars.Vertical;
+            logBox.WordWrap = false;
+            logBox.BackColor = SystemColors.Window;
+
+            installButton = new Button();
+            installButton.Text = TextResources.VoiceLocalInstall;
+            installButton.Location = new Point(14, 380);
+            installButton.Size = new Size(96, 30);
+            installButton.Click += OnInstallClicked;
+
+            cancelButton = new Button();
+            cancelButton.Text = TextResources.VoiceLocalCancelInstall;
+            cancelButton.Location = new Point(118, 380);
+            cancelButton.Size = new Size(96, 30);
+            cancelButton.Enabled = false;
+            cancelButton.Click += OnCancelClicked;
+
+            recheckButton = new Button();
+            recheckButton.Text = TextResources.VoiceLocalRecheck;
+            recheckButton.Location = new Point(222, 380);
+            recheckButton.Size = new Size(96, 30);
+            recheckButton.Click += OnRecheckClicked;
+
+            pickPythonButton = new Button();
+            pickPythonButton.Text = TextResources.VoiceLocalPickPython;
+            pickPythonButton.Location = new Point(326, 380);
+            pickPythonButton.Size = new Size(138, 30);
+            pickPythonButton.Click += OnPickPythonClicked;
+
+            folderButton = new Button();
+            folderButton.Text = TextResources.VoiceLocalOpenFolder;
+            folderButton.Location = new Point(472, 380);
+            folderButton.Size = new Size(130, 30);
+            folderButton.Click += OnOpenFolderClicked;
+
+            Button closeButton = new Button();
+            closeButton.Text = TextResources.Close;
+            closeButton.Location = new Point(610, 380);
+            closeButton.Size = new Size(76, 30);
+            closeButton.Click += delegate { Close(); };
+
+            Controls.Add(introLabel);
+            Controls.Add(statusLabel);
+            Controls.Add(logBox);
+            Controls.Add(installButton);
+            Controls.Add(cancelButton);
+            Controls.Add(recheckButton);
+            Controls.Add(pickPythonButton);
+            Controls.Add(folderButton);
+            Controls.Add(closeButton);
+        }
+
+        public void BeginDetect()
+        {
+            if (busy)
+                return;
+
+            SetBusy(true);
+            statusLabel.Text = TextResources.VoiceLocalChecking;
+
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                SupertonicStatus status = SupertonicSetup.Detect(false);
+                BeginInvokeIfAlive(delegate
+                {
+                    SetBusy(false);
+                    ApplyStatus(status);
+                });
+            });
+        }
+
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            // Killing pip halfway leaves a half-written environment behind, so make closing
+            // the window during an install a deliberate choice.
+            if (busy && installer != null && e.CloseReason == CloseReason.UserClosing)
+            {
+                DialogResult answer = MessageBox.Show(this, TextResources.VoiceLocalCancelConfirm, TextResources.VoiceLocalSetupTitle, MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+                if (answer != DialogResult.Yes)
+                {
+                    e.Cancel = true;
+                    return;
+                }
+
+                installer.Cancel();
+            }
+
+            base.OnFormClosing(e);
+        }
+
+        private void OnInstallClicked(object sender, EventArgs e)
+        {
+            if (busy)
+                return;
+
+            DialogResult answer = MessageBox.Show(this, TextResources.VoiceLocalInstallConfirm, TextResources.VoiceLocalSetupTitle, MessageBoxButtons.OKCancel, MessageBoxIcon.Information);
+            if (answer != DialogResult.OK)
+                return;
+
+            logBox.Clear();
+            SetBusy(true);
+            cancelButton.Enabled = true;
+            statusLabel.Text = TextResources.VoiceLocalInstalling;
+
+            SupertonicInstaller session = new SupertonicInstaller(AppendLog);
+            installer = session;
+
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                SupertonicStatus status = null;
+                string error = null;
+                bool wasCancelled = false;
+
+                try
+                {
+                    status = session.Run();
+                }
+                catch (OperationCanceledException)
+                {
+                    wasCancelled = true;
+                }
+                catch (Exception ex)
+                {
+                    if (session.Cancelled)
+                        wasCancelled = true;
+                    else
+                        error = ex.Message;
+                }
+
+                BeginInvokeIfAlive(delegate
+                {
+                    installer = null;
+                    SetBusy(false);
+                    cancelButton.Enabled = false;
+
+                    if (wasCancelled)
+                    {
+                        statusLabel.Text = TextResources.VoiceLocalInstallCancelled;
+                        AppendLog(TextResources.VoiceLocalInstallCancelled);
+                        return;
+                    }
+
+                    if (error != null)
+                    {
+                        statusLabel.Text = TextResources.VoiceLocalInstallFailed + error;
+                        AppendLog("FAILED: " + error);
+                        return;
+                    }
+
+                    settings.LocalPython = status.PythonPath;
+                    settings.Save();
+                    SupertonicSetup.SetPreferredPython(status.PythonPath);
+
+                    ApplyStatus(status);
+                    statusLabel.Text = TextResources.VoiceLocalInstallDone;
+                    AppendLog(TextResources.VoiceLocalInstallDone);
+
+                    if (onChanged != null)
+                        onChanged();
+                });
+            });
+        }
+
+        private void OnCancelClicked(object sender, EventArgs e)
+        {
+            SupertonicInstaller session = installer;
+            if (session == null)
+                return;
+
+            cancelButton.Enabled = false;
+            AppendLog(TextResources.VoiceLocalInstallCancelled);
+            session.Cancel();
+        }
+
+        private void OnRecheckClicked(object sender, EventArgs e)
+        {
+            SupertonicSetup.InvalidateCache();
+            BeginDetect();
+        }
+
+        // Automatic discovery only walks the usual install roots, so a supertonic that already
+        // lives in a project venv or a conda env somewhere else would otherwise be invisible.
+        // Pointing at its python.exe reuses that install instead of building a second one.
+        private void OnPickPythonClicked(object sender, EventArgs e)
+        {
+            if (busy)
+                return;
+
+            string selected;
+            using (OpenFileDialog dialog = new OpenFileDialog())
+            {
+                dialog.Title = TextResources.VoiceLocalPickPython;
+                dialog.Filter = "python.exe|python.exe|*.exe|*.exe";
+                dialog.CheckFileExists = true;
+                if (dialog.ShowDialog(this) != DialogResult.OK)
+                    return;
+
+                selected = dialog.FileName;
+            }
+
+            SetBusy(true);
+            statusLabel.Text = TextResources.VoiceLocalChecking;
+            AppendLog("checking " + selected);
+
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                SupertonicStatus status = SupertonicSetup.Probe(selected);
+                BeginInvokeIfAlive(delegate
+                {
+                    SetBusy(false);
+
+                    if (status == null)
+                    {
+                        statusLabel.Text = TextResources.VoiceLocalPythonInvalid;
+                        AppendLog(TextResources.VoiceLocalPythonInvalid);
+                        return;
+                    }
+
+                    settings.LocalPython = selected;
+                    settings.Save();
+                    SupertonicSetup.SetPreferredPython(selected);
+                    ApplyStatus(status);
+
+                    if (status.IsReady && onChanged != null)
+                        onChanged();
+                });
+            });
+        }
+
+        private void OnOpenFolderClicked(object sender, EventArgs e)
+        {
+            try
+            {
+                string root = SupertonicSetup.GetRootDirectory();
+                Directory.CreateDirectory(root);
+                Process.Start("explorer.exe", "\"" + root + "\"");
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, ex.Message, TextResources.VoiceLocalSetupTitle, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        }
+
+        private void ApplyStatus(SupertonicStatus status)
+        {
+            if (status == null)
+            {
+                statusLabel.Text = TextResources.VoiceLocalNeedsPython;
+                installButton.Text = TextResources.VoiceLocalInstall;
+                return;
+            }
+
+            if (status.IsReady)
+            {
+                statusLabel.Text = TextResources.VoiceLocalReady + Environment.NewLine
+                    + TextResources.VoiceLocalUsingPython + status.PythonPath + " (" + status.PythonVersion + ")";
+                installButton.Text = TextResources.VoiceLocalReinstall;
+                return;
+            }
+
+            installButton.Text = TextResources.VoiceLocalInstall;
+            if (status.State == SupertonicState.MissingServe)
+                statusLabel.Text = TextResources.VoiceLocalNeedsServe;
+            else if (status.State == SupertonicState.NotInstalled)
+                statusLabel.Text = TextResources.VoiceLocalNeedsInstall;
+            else
+                statusLabel.Text = TextResources.VoiceLocalNeedsPython;
+        }
+
+        private void AppendLog(string message)
+        {
+            BeginInvokeIfAlive(delegate
+            {
+                logBox.AppendText(message + Environment.NewLine);
+            });
+        }
+
+        private void SetBusy(bool value)
+        {
+            busy = value;
+            installButton.Enabled = !value;
+            recheckButton.Enabled = !value;
+            pickPythonButton.Enabled = !value;
+        }
+
+        private void BeginInvokeIfAlive(Action action)
+        {
+            if (IsDisposed || !IsHandleCreated)
+                return;
+
+            try
+            {
+                BeginInvoke(action);
+            }
+            catch
+            {
+            }
         }
     }
 
@@ -5505,6 +5985,7 @@ namespace CursorImeIndicator
         public string Engine = EngineSupertonic;
         public string LocalVoice = "F1";
         public int LocalSteps = 8;
+        public string LocalPython = "";
         public int HotkeyModifiers = 0;
         public int HotkeyKey = 0;
         public int StopHotkeyModifiers = 0;
@@ -5552,6 +6033,10 @@ namespace CursorImeIndicator
                     else if (key.Equals("localVoice", StringComparison.OrdinalIgnoreCase))
                     {
                         settings.LocalVoice = NormalizeLocalVoice(value);
+                    }
+                    else if (key.Equals("localPython", StringComparison.OrdinalIgnoreCase))
+                    {
+                        settings.LocalPython = value;
                     }
                     else if (key.Equals("localSteps", StringComparison.OrdinalIgnoreCase))
                     {
@@ -5631,6 +6116,7 @@ namespace CursorImeIndicator
                 lines.Add("engine=" + NormalizeEngine(Engine));
                 lines.Add("localVoice=" + NormalizeLocalVoice(LocalVoice));
                 lines.Add("localSteps=" + ClampLocalSteps(LocalSteps).ToString(CultureInfo.InvariantCulture));
+                lines.Add("localPython=" + (LocalPython ?? "").Trim());
                 lines.Add("hotkeyModifiers=" + HotkeyModifiers.ToString(CultureInfo.InvariantCulture));
                 lines.Add("hotkeyKey=" + HotkeyKey.ToString(CultureInfo.InvariantCulture));
                 lines.Add("stopHotkeyModifiers=" + StopHotkeyModifiers.ToString(CultureInfo.InvariantCulture));
@@ -6294,6 +6780,801 @@ namespace CursorImeIndicator
         }
     }
 
+    internal enum SupertonicState
+    {
+        NoPython,
+        NotInstalled,
+        MissingServe,
+        Ready
+    }
+
+    internal sealed class SupertonicStatus
+    {
+        public SupertonicState State = SupertonicState.NoPython;
+        public string PythonPath = "";
+        public string PythonVersion = "";
+
+        public bool IsReady
+        {
+            get { return State == SupertonicState.Ready; }
+        }
+    }
+
+    // Thrown when the local engine cannot start because nothing is installed yet. The caller
+    // catches this specific type so it can offer the one-click setup instead of only printing
+    // a pip command the user has to run themselves.
+    internal sealed class SupertonicNotInstalledException : InvalidOperationException
+    {
+        public SupertonicNotInstalledException(string message)
+            : base(message)
+        {
+        }
+    }
+
+    internal static class SupertonicSetup
+    {
+        // pip generates .exe launchers for console scripts, and an Application Control (WDAC)
+        // policy blocks those on locked-down machines while python.exe itself stays allowed.
+        // Going through -c gives the same command line without depending on the shim.
+        public const string CliBootstrap = "import sys; from supertonic.cli import main; sys.argv[0] = 'supertonic'; sys.exit(main())";
+
+        // find_spec only resolves the module, it does not import it. Importing supertonic for
+        // real drags in onnxruntime and costs seconds, which we would pay once per candidate.
+        private const string ProbeScript = "import sys,importlib.util as u;f=u.find_spec;s='READY' if f('supertonic') and f('fastapi') and f('uvicorn') else ('NO_SERVE' if f('supertonic') else 'NONE');print(str(sys.version_info[0])+'.'+str(sys.version_info[1])+'|'+s)";
+
+        private const int MinPythonMajor = 3;
+        private const int MinPythonMinor = 9;
+        private const int ProbeTimeoutMs = 20000;
+
+        private static readonly object CacheLock = new object();
+        private static SupertonicStatus cachedStatus;
+        private static DateTime cachedAtUtc;
+        private static string preferredPython = "";
+
+        public static string GetRootDirectory()
+        {
+            string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            return Path.Combine(localAppData, "HanEnCursorIndicator\\supertonic");
+        }
+
+        public static string GetRuntimePython()
+        {
+            return Path.Combine(GetRootDirectory(), "runtime\\Scripts\\python.exe");
+        }
+
+        public static string GetEmbeddedPython()
+        {
+            return Path.Combine(GetRootDirectory(), "python\\python.exe");
+        }
+
+        public static void SetPreferredPython(string path)
+        {
+            preferredPython = path == null ? "" : path.Trim();
+            InvalidateCache();
+        }
+
+        public static void InvalidateCache()
+        {
+            lock (CacheLock)
+            {
+                cachedStatus = null;
+            }
+        }
+
+        public static SupertonicStatus Detect(bool useCache)
+        {
+            if (useCache)
+            {
+                lock (CacheLock)
+                {
+                    if (cachedStatus != null && (DateTime.UtcNow - cachedAtUtc).TotalMinutes < 5)
+                        return cachedStatus;
+                }
+            }
+
+            SupertonicStatus best = new SupertonicStatus();
+            foreach (string candidate in EnumeratePythonCandidates())
+            {
+                SupertonicStatus status = Probe(candidate);
+                if (status == null)
+                    continue;
+
+                if (Rank(status.State) > Rank(best.State))
+                    best = status;
+
+                if (best.IsReady)
+                    break;
+            }
+
+            lock (CacheLock)
+            {
+                cachedStatus = best;
+                cachedAtUtc = DateTime.UtcNow;
+            }
+
+            return best;
+        }
+
+        public static ProcessStartInfo CreateServerStartInfo(int port)
+        {
+            SupertonicStatus status = Detect(true);
+            string portText = port.ToString(CultureInfo.InvariantCulture);
+
+            if (status.IsReady)
+            {
+                ProcessStartInfo info = CreateBaseStartInfo(status.PythonPath);
+                info.Arguments = "-c \"" + CliBootstrap + "\" serve --host 127.0.0.1 --port " + portText + " --log-level warning";
+                return info;
+            }
+
+            // A hand-rolled install from an earlier version may only expose the .exe launcher.
+            string legacy = FindLegacyLauncher();
+            if (legacy.Length > 0)
+            {
+                ProcessStartInfo info = CreateBaseStartInfo(legacy);
+                info.Arguments = "serve --host 127.0.0.1 --port " + portText + " --log-level warning";
+                return info;
+            }
+
+            return null;
+        }
+
+        public static SupertonicStatus Probe(string pythonPath)
+        {
+            if (string.IsNullOrEmpty(pythonPath) || !File.Exists(pythonPath))
+                return null;
+
+            string output;
+            int exitCode = RunCapture(pythonPath, "-c \"" + ProbeScript + "\"", ProbeTimeoutMs, out output);
+            if (exitCode != 0)
+                return null;
+
+            string line = LastLineWith(output, '|');
+            if (line.Length == 0)
+                return null;
+
+            string[] parts = line.Split('|');
+            if (parts.Length != 2)
+                return null;
+
+            int major;
+            int minor;
+            if (!TryParseVersion(parts[0], out major, out minor))
+                return null;
+            if (major < MinPythonMajor || (major == MinPythonMajor && minor < MinPythonMinor))
+                return null;
+
+            SupertonicStatus status = new SupertonicStatus();
+            status.PythonPath = pythonPath;
+            status.PythonVersion = major.ToString(CultureInfo.InvariantCulture) + "." + minor.ToString(CultureInfo.InvariantCulture);
+
+            string token = parts[1].Trim();
+            if (token == "READY")
+                status.State = SupertonicState.Ready;
+            else if (token == "NO_SERVE")
+                status.State = SupertonicState.MissingServe;
+            else
+                status.State = SupertonicState.NotInstalled;
+
+            return status;
+        }
+
+        public static List<string> EnumeratePythonCandidates()
+        {
+            List<string> result = new List<string>();
+            Dictionary<string, bool> seen = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+
+            AddCandidate(result, seen, LoadPreferredPython());
+            AddCandidate(result, seen, GetRuntimePython());
+            AddCandidate(result, seen, GetEmbeddedPython());
+
+            foreach (string path in EnumerateSystemPythons())
+                AddCandidate(result, seen, path);
+
+            return result;
+        }
+
+        public static bool IsManagedPython(string path)
+        {
+            if (string.IsNullOrEmpty(path))
+                return false;
+
+            // The trailing separator keeps a sibling such as ...\supertonic-old from matching.
+            string root = GetRootDirectory();
+            if (!root.EndsWith("\\"))
+                root += "\\";
+
+            return path.StartsWith(root, StringComparison.OrdinalIgnoreCase);
+        }
+
+        public static ProcessStartInfo CreateBaseStartInfo(string fileName)
+        {
+            ProcessStartInfo info = new ProcessStartInfo();
+            info.FileName = fileName;
+            info.UseShellExecute = false;
+            info.CreateNoWindow = true;
+            // Korean text and pip's own output are UTF-8; without this the child process
+            // picks the console code page and dies on the first non-ASCII byte.
+            info.EnvironmentVariables["PYTHONIOENCODING"] = "utf-8";
+            info.EnvironmentVariables["PYTHONUTF8"] = "1";
+            info.EnvironmentVariables["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1";
+            return info;
+        }
+
+        private static string LoadPreferredPython()
+        {
+            if (preferredPython.Length > 0)
+                return preferredPython;
+
+            try
+            {
+                preferredPython = VoiceSettings.Load().LocalPython;
+            }
+            catch
+            {
+            }
+
+            return preferredPython;
+        }
+
+        private static List<string> EnumerateSystemPythons()
+        {
+            List<string> found = new List<string>();
+            string userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            string roamingAppData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            string programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+
+            string launcherPython = ResolveWithPyLauncher();
+            if (launcherPython.Length > 0)
+                found.Add(launcherPython);
+
+            found.AddRange(ScanChildren(Path.Combine(localAppData, "Programs\\Python")));
+            found.AddRange(ScanChildren(Path.Combine(roamingAppData, "uv\\python")));
+            found.Add(Path.Combine(userProfile, "anaconda3\\python.exe"));
+            found.Add(Path.Combine(userProfile, "miniconda3\\python.exe"));
+            found.AddRange(ScanChildren(programFiles));
+            found.AddRange(ScanChildren("C:\\"));
+            found.AddRange(ResolveFromPath("python.exe"));
+            return found;
+        }
+
+        // Python installs land as <parent>\PythonNNN\python.exe (and uv uses
+        // <parent>\cpython-3.12.x-...\python.exe), so one level down covers both. Newest
+        // first, because a higher version number is the better default.
+        private static List<string> ScanChildren(string parent)
+        {
+            List<string> found = new List<string>();
+            try
+            {
+                if (!Directory.Exists(parent))
+                    return found;
+
+                List<string> directories = new List<string>(Directory.GetDirectories(parent));
+                directories.Sort(StringComparer.OrdinalIgnoreCase);
+                directories.Reverse();
+
+                foreach (string directory in directories)
+                {
+                    string name = Path.GetFileName(directory);
+                    if (name.IndexOf("python", StringComparison.OrdinalIgnoreCase) < 0)
+                        continue;
+
+                    string candidate = Path.Combine(directory, "python.exe");
+                    if (File.Exists(candidate))
+                        found.Add(candidate);
+                }
+            }
+            catch
+            {
+            }
+
+            return found;
+        }
+
+        private static List<string> ResolveFromPath(string exeName)
+        {
+            List<string> found = new List<string>();
+            try
+            {
+                string pathValue = Environment.GetEnvironmentVariable("PATH");
+                if (string.IsNullOrEmpty(pathValue))
+                    return found;
+
+                foreach (string directory in pathValue.Split(';'))
+                {
+                    string trimmed = directory.Trim().Trim('"');
+                    if (trimmed.Length == 0)
+                        continue;
+
+                    try
+                    {
+                        string candidate = Path.Combine(trimmed, exeName);
+                        if (File.Exists(candidate))
+                            found.Add(candidate);
+                    }
+                    catch
+                    {
+                    }
+                }
+            }
+            catch
+            {
+            }
+
+            return found;
+        }
+
+        private static string ResolveWithPyLauncher()
+        {
+            string output;
+            int exitCode = RunCapture("py.exe", "-3 -c \"import sys;print(sys.executable)\"", 10000, out output);
+            if (exitCode != 0)
+                return "";
+
+            string line = LastNonEmptyLine(output);
+            return File.Exists(line) ? line : "";
+        }
+
+        private static void AddCandidate(List<string> result, Dictionary<string, bool> seen, string path)
+        {
+            if (string.IsNullOrEmpty(path))
+                return;
+
+            string full;
+            try
+            {
+                full = Path.GetFullPath(path);
+            }
+            catch
+            {
+                return;
+            }
+
+            // %LOCALAPPDATA%\Microsoft\WindowsApps\python.exe is a zero-byte app-execution
+            // alias: running it opens the Microsoft Store instead of a Python interpreter.
+            if (full.IndexOf("\\WindowsApps\\", StringComparison.OrdinalIgnoreCase) >= 0)
+                return;
+
+            if (!File.Exists(full) || seen.ContainsKey(full))
+                return;
+
+            seen[full] = true;
+            result.Add(full);
+        }
+
+        private static string FindLegacyLauncher()
+        {
+            string userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            List<string> candidates = new List<string>();
+            candidates.Add(Path.Combine(userProfile, "anaconda3\\Scripts\\supertonic.exe"));
+            candidates.Add(Path.Combine(userProfile, "miniconda3\\Scripts\\supertonic.exe"));
+            candidates.AddRange(ResolveFromPath("supertonic.exe"));
+
+            foreach (string candidate in candidates)
+            {
+                if (File.Exists(candidate))
+                    return candidate;
+            }
+
+            return "";
+        }
+
+        private static int Rank(SupertonicState state)
+        {
+            if (state == SupertonicState.Ready)
+                return 3;
+            if (state == SupertonicState.MissingServe)
+                return 2;
+            if (state == SupertonicState.NotInstalled)
+                return 1;
+            return 0;
+        }
+
+        private static bool TryParseVersion(string text, out int major, out int minor)
+        {
+            major = 0;
+            minor = 0;
+
+            string[] parts = text.Trim().Split('.');
+            if (parts.Length < 2)
+                return false;
+
+            return int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out major)
+                && int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out minor);
+        }
+
+        private static string LastNonEmptyLine(string text)
+        {
+            string[] lines = (text ?? "").Split('\n');
+            for (int i = lines.Length - 1; i >= 0; i--)
+            {
+                string line = lines[i].Trim();
+                if (line.Length > 0)
+                    return line;
+            }
+
+            return "";
+        }
+
+        private static string LastLineWith(string text, char marker)
+        {
+            string[] lines = (text ?? "").Split('\n');
+            for (int i = lines.Length - 1; i >= 0; i--)
+            {
+                string line = lines[i].Trim();
+                if (line.IndexOf(marker) >= 0)
+                    return line;
+            }
+
+            return "";
+        }
+
+        // Reads stdout through the async callback rather than ReadToEnd, so a child that
+        // never exits cannot block us past the timeout.
+        private static int RunCapture(string fileName, string arguments, int timeoutMs, out string output)
+        {
+            output = "";
+            StringBuilder builder = new StringBuilder();
+
+            try
+            {
+                ProcessStartInfo info = CreateBaseStartInfo(fileName);
+                info.Arguments = arguments;
+                info.RedirectStandardOutput = true;
+                info.RedirectStandardError = true;
+                info.StandardOutputEncoding = new UTF8Encoding(false);
+                info.StandardErrorEncoding = new UTF8Encoding(false);
+
+                using (Process process = new Process())
+                {
+                    process.StartInfo = info;
+                    process.OutputDataReceived += delegate(object sender, DataReceivedEventArgs e)
+                    {
+                        if (e.Data != null)
+                        {
+                            lock (builder)
+                            {
+                                builder.Append(e.Data);
+                                builder.Append('\n');
+                            }
+                        }
+                    };
+                    process.ErrorDataReceived += delegate(object sender, DataReceivedEventArgs e) { };
+
+                    process.Start();
+                    process.BeginOutputReadLine();
+                    process.BeginErrorReadLine();
+
+                    if (!process.WaitForExit(timeoutMs))
+                    {
+                        try
+                        {
+                            process.Kill();
+                        }
+                        catch
+                        {
+                        }
+
+                        return -1;
+                    }
+
+                    lock (builder)
+                    {
+                        output = builder.ToString();
+                    }
+
+                    return process.ExitCode;
+                }
+            }
+            catch
+            {
+                return -1;
+            }
+        }
+    }
+
+    // Builds a private Supertonic runtime under %LOCALAPPDATA% so the user never has to open a
+    // terminal. It never touches a Python the user already owns: if nothing usable is found it
+    // downloads its own interpreter.
+    internal sealed class SupertonicInstaller
+    {
+        private const string GetPipUrl = "https://bootstrap.pypa.io/get-pip.py";
+
+        // Tried in order; the first URL that answers wins. python.org keeps every patch
+        // release forever, so an older entry stays a valid fallback.
+        private static readonly string[] EmbeddedPythonVersions = new[] { "3.12.10", "3.12.9", "3.11.9" };
+
+        private readonly Action<string> log;
+        private readonly object gate = new object();
+        private Process current;
+        private volatile bool cancelled;
+
+        public SupertonicInstaller(Action<string> log)
+        {
+            this.log = log;
+        }
+
+        public bool Cancelled
+        {
+            get { return cancelled; }
+        }
+
+        public void Cancel()
+        {
+            cancelled = true;
+            lock (gate)
+            {
+                try
+                {
+                    if (current != null && !current.HasExited)
+                        current.Kill();
+                }
+                catch
+                {
+                }
+            }
+        }
+
+        public SupertonicStatus Run()
+        {
+            string root = SupertonicSetup.GetRootDirectory();
+            Directory.CreateDirectory(root);
+            Write("install folder: " + root);
+
+            string python = SupertonicSetup.GetRuntimePython();
+            if (!File.Exists(python))
+                python = PrepareRuntime(root);
+
+            ThrowIfCancelled();
+            Write("");
+            Write("== installing supertonic[serve] ==");
+            RunStep(python, "-m pip install --upgrade pip --disable-pip-version-check", root, false);
+            RunStep(python, "-m pip install --disable-pip-version-check \"supertonic[serve]\"", root, true);
+
+            ThrowIfCancelled();
+            Write("");
+            Write("== downloading the supertonic-3 model (about 400 MB, once) ==");
+            RunStep(python, "-c \"" + SupertonicSetup.CliBootstrap + "\" download", root, false);
+
+            ThrowIfCancelled();
+            Write("");
+            Write("== verifying ==");
+            SupertonicStatus status = SupertonicSetup.Probe(python);
+            if (status == null || !status.IsReady)
+                throw new InvalidOperationException("The install finished but " + python + " still cannot import supertonic, fastapi and uvicorn.");
+
+            Write("python " + status.PythonVersion + " at " + status.PythonPath + " is ready.");
+            SupertonicSetup.SetPreferredPython(python);
+            return status;
+        }
+
+        private string PrepareRuntime(string root)
+        {
+            string basePython = FindBasePython();
+            if (basePython.Length > 0)
+            {
+                Write("using the python already on this PC: " + basePython);
+                Write("");
+                Write("== creating a private virtual environment ==");
+
+                string venvDirectory = Path.Combine(root, "runtime");
+                int exitCode = RunStep(basePython, "-m venv \"" + venvDirectory + "\"", root, false);
+                string python = SupertonicSetup.GetRuntimePython();
+                if (exitCode == 0 && File.Exists(python))
+                    return python;
+
+                Write("could not create a virtual environment (exit " + exitCode.ToString(CultureInfo.InvariantCulture) + "); downloading a private python instead.");
+            }
+            else
+            {
+                Write("no usable python found on this PC; downloading a private one.");
+            }
+
+            ThrowIfCancelled();
+            return BootstrapEmbeddedPython(root);
+        }
+
+        private string FindBasePython()
+        {
+            foreach (string candidate in SupertonicSetup.EnumeratePythonCandidates())
+            {
+                if (SupertonicSetup.IsManagedPython(candidate))
+                    continue;
+
+                ThrowIfCancelled();
+                if (SupertonicSetup.Probe(candidate) != null)
+                    return candidate;
+            }
+
+            return "";
+        }
+
+        private string BootstrapEmbeddedPython(string root)
+        {
+            string targetDirectory = Path.Combine(root, "python");
+            TryDeleteDirectory(targetDirectory);
+            Directory.CreateDirectory(targetDirectory);
+
+            string zipPath = Path.Combine(root, "python-embed.zip");
+            bool downloaded = false;
+            foreach (string version in EmbeddedPythonVersions)
+            {
+                ThrowIfCancelled();
+                string url = "https://www.python.org/ftp/python/" + version + "/python-" + version + "-embed-amd64.zip";
+                Write("downloading " + url);
+                if (TryDownload(url, zipPath))
+                {
+                    downloaded = true;
+                    break;
+                }
+
+                Write("  unavailable; trying an earlier build.");
+            }
+
+            if (!downloaded)
+                throw new InvalidOperationException("Could not download an embeddable Python from python.org. Check the network connection, or install Python 3.9+ yourself and run the setup again.");
+
+            Write("extracting...");
+            ZipFile.ExtractToDirectory(zipPath, targetDirectory);
+            TryDelete(zipPath);
+            EnableSitePackages(targetDirectory);
+
+            string python = SupertonicSetup.GetEmbeddedPython();
+            if (!File.Exists(python))
+                throw new InvalidOperationException("The downloaded archive did not contain python.exe.");
+
+            string getPipPath = Path.Combine(root, "get-pip.py");
+            Write("downloading get-pip.py");
+            if (!TryDownload(GetPipUrl, getPipPath))
+                throw new InvalidOperationException("Could not download get-pip.py from " + GetPipUrl + ".");
+
+            Write("");
+            Write("== bootstrapping pip ==");
+            RunStep(python, "\"" + getPipPath + "\" --no-warn-script-location", root, true);
+            TryDelete(getPipPath);
+            return python;
+        }
+
+        // The embeddable build ships with site imports disabled and no site-packages on the
+        // path, so pip installs would be invisible to it. The ._pth file is the only way in.
+        private static void EnableSitePackages(string pythonDirectory)
+        {
+            foreach (string pthPath in Directory.GetFiles(pythonDirectory, "python*._pth"))
+            {
+                List<string> lines = new List<string>(File.ReadAllLines(pthPath));
+                bool hasSitePackages = false;
+                for (int i = 0; i < lines.Count; i++)
+                {
+                    string trimmed = lines[i].Trim();
+                    if (trimmed == "#import site")
+                        lines[i] = "import site";
+                    if (trimmed.Equals("Lib\\site-packages", StringComparison.OrdinalIgnoreCase))
+                        hasSitePackages = true;
+                }
+
+                if (!hasSitePackages)
+                    lines.Add("Lib\\site-packages");
+
+                File.WriteAllLines(pthPath, lines.ToArray());
+            }
+        }
+
+        private bool TryDownload(string url, string destination)
+        {
+            try
+            {
+                ServicePointManager.SecurityProtocol |= (SecurityProtocolType)3072;
+                using (WebClient client = new WebClient())
+                {
+                    client.Headers["User-Agent"] = "HanEnCursorIndicator";
+                    client.DownloadFile(url, destination);
+                }
+
+                return new FileInfo(destination).Length > 0;
+            }
+            catch
+            {
+                TryDelete(destination);
+                return false;
+            }
+        }
+
+        private int RunStep(string fileName, string arguments, string workingDirectory, bool throwOnFailure)
+        {
+            ThrowIfCancelled();
+            Write("> " + Path.GetFileName(fileName) + " " + arguments);
+
+            ProcessStartInfo info = SupertonicSetup.CreateBaseStartInfo(fileName);
+            info.Arguments = arguments;
+            info.WorkingDirectory = workingDirectory;
+            info.RedirectStandardOutput = true;
+            info.RedirectStandardError = true;
+            info.StandardOutputEncoding = new UTF8Encoding(false);
+            info.StandardErrorEncoding = new UTF8Encoding(false);
+
+            int exitCode;
+            using (Process process = new Process())
+            {
+                process.StartInfo = info;
+                process.OutputDataReceived += delegate(object sender, DataReceivedEventArgs e)
+                {
+                    if (e.Data != null)
+                        Write("  " + e.Data);
+                };
+                process.ErrorDataReceived += delegate(object sender, DataReceivedEventArgs e)
+                {
+                    if (e.Data != null)
+                        Write("  " + e.Data);
+                };
+
+                process.Start();
+                lock (gate)
+                {
+                    current = process;
+                }
+
+                process.BeginOutputReadLine();
+                process.BeginErrorReadLine();
+                process.WaitForExit();
+                exitCode = process.ExitCode;
+
+                lock (gate)
+                {
+                    current = null;
+                }
+            }
+
+            ThrowIfCancelled();
+            if (exitCode != 0 && throwOnFailure)
+                throw new InvalidOperationException(Path.GetFileName(fileName) + " " + arguments + " exited with code " + exitCode.ToString(CultureInfo.InvariantCulture) + ".");
+
+            return exitCode;
+        }
+
+        private void ThrowIfCancelled()
+        {
+            if (cancelled)
+                throw new OperationCanceledException();
+        }
+
+        private void Write(string message)
+        {
+            try
+            {
+                if (log != null)
+                    log(message);
+            }
+            catch
+            {
+            }
+        }
+
+        private static void TryDelete(string path)
+        {
+            try
+            {
+                if (File.Exists(path))
+                    File.Delete(path);
+            }
+            catch
+            {
+            }
+        }
+
+        private static void TryDeleteDirectory(string path)
+        {
+            try
+            {
+                if (Directory.Exists(path))
+                    Directory.Delete(path, true);
+            }
+            catch
+            {
+            }
+        }
+    }
+
     internal static class SupertonicLocalClient
     {
         private const int Port = 7788;
@@ -6419,35 +7700,21 @@ namespace CursorImeIndicator
 
         private static Process StartServer()
         {
-            string userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-            string[] candidates = new[]
-            {
-                Path.Combine(userProfile, "anaconda3\\Scripts\\supertonic.exe"),
-                Path.Combine(userProfile, "miniconda3\\Scripts\\supertonic.exe"),
-                "supertonic.exe"
-            };
+            ProcessStartInfo info = SupertonicSetup.CreateServerStartInfo(Port);
+            if (info == null)
+                throw new SupertonicNotInstalledException(TextResources.VoiceLocalMissing);
 
-            foreach (string candidate in candidates)
+            try
             {
-                bool isPathLookup = candidate.IndexOf('\\') < 0;
-                if (!isPathLookup && !File.Exists(candidate))
-                    continue;
-
-                try
-                {
-                    ProcessStartInfo info = new ProcessStartInfo();
-                    info.FileName = candidate;
-                    info.Arguments = "serve --host 127.0.0.1 --port " + Port.ToString(CultureInfo.InvariantCulture) + " --log-level warning";
-                    info.UseShellExecute = false;
-                    info.CreateNoWindow = true;
-                    return Process.Start(info);
-                }
-                catch
-                {
-                }
+                return Process.Start(info);
             }
-
-            throw new InvalidOperationException(TextResources.VoiceLocalMissing);
+            catch (Exception ex)
+            {
+                // A launcher that resolved a moment ago but will not start (moved, blocked by
+                // an Application Control policy, ...) is worth re-detecting from scratch.
+                SupertonicSetup.InvalidateCache();
+                throw new InvalidOperationException(TextResources.VoiceLocalMissing + " (" + ex.Message + ")");
+            }
         }
 
         private static string BuildRequestJson(VoiceRequestOptions request)
