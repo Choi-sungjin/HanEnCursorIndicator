@@ -192,41 +192,9 @@ Right-click the tray icon and open `보이스`.
 
 ### Supertonic local engine (default)
 
-Nothing has to be installed by hand. Open `보이스 > 로컬 음성 설치/점검` (the same window is reachable
-from the `로컬 음성 설치/점검` button inside `보이스 설정`) and press `설치`. The window logs what it
-is doing line by line and can be stopped at any point.
-
-The setup does, in order:
-
-1. Looks for a Python 3.9+ already on the PC — the `py` launcher, `%LOCALAPPDATA%\Programs\Python`,
-   uv's interpreters, Anaconda/Miniconda, and `PATH`. The Microsoft Store `python.exe` alias is
-   skipped: it is a stub that opens the Store instead of running Python.
-2. Creates a **private** virtual environment at `%LOCALAPPDATA%\HanEnCursorIndicator\supertonic\runtime`.
-   An existing Python install is used as the base but is never modified.
-3. If no usable Python exists, downloads the official embeddable Python from python.org into
-   `%LOCALAPPDATA%\HanEnCursorIndicator\supertonic\python` and bootstraps pip into it. No admin
-   rights, no `PATH` changes.
-4. Runs `pip install "supertonic[serve]"` in that environment.
-5. Pre-downloads the `supertonic-3` model, so the first spoken line is not a 400 MB stall.
-6. Verifies that `supertonic`, `fastapi`, and `uvicorn` all import, then records the interpreter
-   in `voice.ini` as `localPython`.
-
-About 600 MB is downloaded the first time; roughly 165 MB of that stays as the private runtime.
-Everything after that runs offline, with no API key.
-
-If Supertonic already lives somewhere the scan does not reach — a project venv, a named conda
-environment — use `Python 직접 지정` to point at that `python.exe`. It is checked and reused as-is,
-with no second install.
-
-Notes:
-
-- The server is started as `python.exe -c "…supertonic.cli…" serve --host 127.0.0.1 --port 7788`
-  rather than through `supertonic.exe`. pip's generated `.exe` launchers are blocked outright on
-  machines with an Application Control (WDAC) policy, while `python.exe` itself keeps running.
-  A pre-existing `supertonic.exe` is still accepted as a fallback.
-- The server starts in the background when voice is enabled, and is stopped on exit if the app
-  started it.
-- Trying to speak before setup has run offers the installer instead of just naming a pip command.
+- One-time setup: `pip install "supertonic[serve]"` (the app looks for `supertonic.exe` in `%USERPROFILE%\anaconda3\Scripts`, `%USERPROFILE%\miniconda3\Scripts`, then `PATH`).
+- The first synthesis downloads the `supertonic-3` model from Hugging Face automatically (~a minute).
+- The app starts a local server (`supertonic serve` on `127.0.0.1:7788`) in the background when voice is enabled, and stops it on exit if the app started it.
 - Pick the local voice in `보이스 설정`: `성별` checkboxes (남성/여성) plus the `톤/목소리` slider (1–5) select among the 10 built-in styles (`F1`–`F5`, `M1`–`M5`).
 - `속도` slider (50–200%) controls speech speed (Supertonic clamps to 70–200%); `품질(스텝)` slider (1–32, default 8) trades synthesis quality against speed. Supertonic-3 has no separate pitch parameter — tone variation comes from the voice styles.
 
@@ -280,7 +248,6 @@ Right-click the tray icon and open `라이선스`.
 - Tray menu mascot color picker.
 - Tray menu label color picker and background-line cutout refinement.
 - Tray menu Supertone voice settings with encrypted per-PC API key storage.
-- Tray menu one-click Supertonic local voice setup: private Python runtime, `supertonic[serve]`, and the model, with no terminal.
 
 ## Monetization Direction
 
