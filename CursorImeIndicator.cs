@@ -230,6 +230,10 @@ namespace CursorImeIndicator
         public const string VoiceNoText = "\uC77D\uC744 \uD14D\uC2A4\uD2B8\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.";
         public const string VoiceFailed = "\uC74C\uC131 \uC0DD\uC131 \uC2E4\uD328: ";
         public const string VoiceReady = "\uB4DC\uB798\uADF8\uD55C \uD14D\uC2A4\uD2B8\uB97C Supertone\uC73C\uB85C \uC77D\uC744 \uC900\uBE44\uAC00 \uB410\uC2B5\uB2C8\uB2E4.";
+        public const string VoiceGroupBehaviour = "\uC77D\uAE30 \uB3D9\uC791";
+        public const string VoiceGroupEngine = "\uC5D4\uC9C4";
+        public const string VoiceGroupVoice = "\uC74C\uC131";
+        public const string VoiceGroupCloud = "\uD074\uB77C\uC6B0\uB4DC (\uC120\uD0DD)";
         public const string VoiceEngine = "TTS \uC5D4\uC9C4";
         public const string VoiceEngineSupertonic = "Supertonic \uB85C\uCEEC (\uBB34\uB8CC)";
         public const string VoiceEngineSupertoneApi = "Supertone API (\uD074\uB77C\uC6B0\uB4DC)";
@@ -991,13 +995,32 @@ namespace CursorImeIndicator
         {
             if (voiceSettingsForm == null || voiceSettingsForm.IsDisposed)
             {
-                voiceSettingsForm = new VoiceSettingsForm(voiceSettings, OnVoiceSettingsSaved, OpenSupertonicSetup);
+                voiceSettingsForm = new VoiceSettingsForm(voiceSettings, OnVoiceSettingsSaved,
+                    OpenSupertonicSetup, CurrentAccentColor());
                 voiceSettingsForm.FormClosed += OnVoiceSettingsFormClosed;
             }
 
             voiceSettingsForm.Show();
             voiceSettingsForm.Activate();
             voiceSettingsForm.Reload();
+        }
+
+        // Theme: the settings window borrows the colour the mascot is wearing right now, so
+        // the app has one identity instead of a second palette invented for dialogs. The label
+        // shades are used rather than the mascot shades - they are the darker pair, and white
+        // text has to stay readable on the Save button.
+        private Color CurrentAccentColor()
+        {
+            if (settings.UseLanguageColors)
+            {
+                string state = IndicatorStates.FromLabel(ImeStateReader.GetIndicatorText());
+                if (state == IndicatorStates.EnglishLower)
+                    return settings.EnglishLowerLabelColor;
+                if (state == IndicatorStates.EnglishUpper)
+                    return settings.EnglishUpperLabelColor;
+            }
+
+            return settings.KoreanLabelColor;
         }
 
         private void OnVoiceSettingsFormClosed(object sender, FormClosedEventArgs e)
@@ -4579,7 +4602,7 @@ namespace CursorImeIndicator
         private bool suppressGenderEvents;
         private bool suppressGaugeEvents;
 
-        public VoiceSettingsForm(VoiceSettings settings, Action onSaved, Action openSetup)
+        public VoiceSettingsForm(VoiceSettings settings, Action onSaved, Action openSetup, Color accent)
         {
             this.settings = settings;
             this.onSaved = onSaved;
@@ -4796,23 +4819,50 @@ namespace CursorImeIndicator
             table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
             table.MinimumSize = new Size(470, 0);
 
-            AddFullWidth(table, enabledCheck);
-            AddField(table, TextResources.ApiKey, apiKeyBox);
-            AddFullWidth(table, apiKeyStatusLabel);
-            AddField(table, TextResources.VoiceId, voiceIdBox);
-            AddField(table, TextResources.Language, languageRow);
-            AddField(table, TextResources.Style, styleBox);
-            AddField(table, TextResources.MaxTextLength, maxTextRow);
-            AddField(table, TextResources.VoiceEngine, engineCombo);
-            AddField(table, TextResources.VoiceGender, genderRow);
-            AddField(table, TextResources.VoiceTone, CreateSliderRow(toneTrack, toneValue, ""));
-            AddField(table, TextResources.Speed, CreateSliderRow(speedTrack, speedValue, "%"));
-            AddField(table, TextResources.VoiceQuality, CreateSliderRow(stepsTrack, stepsValue, ""));
+            // Four boxes instead of fifteen flat rows: the border is the grouping, so the
+            // reader can skip a whole section instead of reading every label to find one.
+            TableLayoutPanel behaviour = CreateFieldTable();
+            AddFullWidth(behaviour, enabledCheck);
+            AddField(behaviour, TextResources.MaxTextLength, maxTextRow);
+
+            TableLayoutPanel engine = CreateFieldTable();
+            AddField(engine, TextResources.VoiceEngine, engineCombo);
+            AddField(engine, TextResources.Language, languageRow);
+
+            TableLayoutPanel voice = CreateFieldTable();
+            AddField(voice, TextResources.VoiceGender, genderRow);
+            AddField(voice, TextResources.VoiceTone, CreateSliderRow(toneTrack, toneValue, ""));
+            AddField(voice, TextResources.Speed, CreateSliderRow(speedTrack, speedValue, "%"));
+            AddField(voice, TextResources.VoiceQuality, CreateSliderRow(stepsTrack, stepsValue, ""));
+
+            TableLayoutPanel cloud = CreateFieldTable();
+            AddField(cloud, TextResources.ApiKey, apiKeyBox);
+            AddFullWidth(cloud, apiKeyStatusLabel);
+            AddField(cloud, TextResources.VoiceId, voiceIdBox);
+            AddField(cloud, TextResources.Style, styleBox);
+            AddFullWidth(cloud, clearKeyButton);
+
+            AddFullWidth(table, WrapGroup(TextResources.VoiceGroupBehaviour, accent, behaviour));
+            AddFullWidth(table, WrapGroup(TextResources.VoiceGroupEngine, accent, engine));
+            AddFullWidth(table, WrapGroup(TextResources.VoiceGroupVoice, accent, voice));
+            AddFullWidth(table, WrapGroup(TextResources.VoiceGroupCloud, accent, cloud));
             AddFullWidth(table, localRow);
-            AddFullWidth(table, clearKeyButton);
             AddFullWidth(table, buttonRow);
 
+            // A hairline of the same colour along the top ties the window to the mascot
+            // without tinting anything the OS draws for us.
+            Panel accentStrip = new Panel();
+            accentStrip.Dock = DockStyle.Top;
+            accentStrip.Height = 3;
+            accentStrip.BackColor = accent;
+
+            saveButton.FlatStyle = FlatStyle.Flat;
+            saveButton.FlatAppearance.BorderSize = 0;
+            saveButton.BackColor = accent;
+            saveButton.ForeColor = Color.White;
+
             Controls.Add(table);
+            Controls.Add(accentStrip);
 
             Reload();
         }
@@ -4949,6 +4999,37 @@ namespace CursorImeIndicator
                 return;
 
             UpdateGaugeLabels();
+        }
+
+        private static TableLayoutPanel CreateFieldTable()
+        {
+            TableLayoutPanel t = new TableLayoutPanel();
+            t.ColumnCount = 2;
+            t.Dock = DockStyle.Fill;
+            t.AutoSize = true;
+            t.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            t.Margin = new Padding(0);
+            t.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            t.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+            return t;
+        }
+
+        private static GroupBox WrapGroup(string title, Color accent, TableLayoutPanel inner)
+        {
+            // ForeColor on a GroupBox colours the caption but also inherits down, so the
+            // contents are put back to the normal control colour.
+            inner.ForeColor = SystemColors.ControlText;
+
+            GroupBox box = new GroupBox();
+            box.Text = title;
+            box.ForeColor = accent;
+            box.Dock = DockStyle.Fill;
+            box.AutoSize = true;
+            box.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            box.Padding = new Padding(9, 4, 9, 8);
+            box.Margin = new Padding(0, 2, 0, 12);
+            box.Controls.Add(inner);
+            return box;
         }
 
         private static FlowLayoutPanel CreateInlineRow()
