@@ -4533,99 +4533,35 @@ namespace CursorImeIndicator
             ShowInTaskbar = false;
             TopMost = true;
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(500, 580);
+            // Laid out with panels instead of fixed coordinates. The app is dpiAware, so at
+            // 150% scaling Windows does not stretch it: a hardcoded pixel width keeps its
+            // pixels while the Korean text inside grows past them. That is how the setup
+            // button ended up underneath the status text and "API Key" lost its last
+            // character. AutoScaleMode.Font plus AutoSize lets every control ask for the
+            // width its own text actually needs.
+            AutoScaleMode = AutoScaleMode.Font;
+            AutoSize = true;
+            AutoSizeMode = AutoSizeMode.GrowAndShrink;
 
             enabledCheck = new CheckBox();
             enabledCheck.Text = TextResources.VoiceOnDrag;
-            enabledCheck.Location = new Point(14, 14);
-            enabledCheck.Size = new Size(250, 24);
+            enabledCheck.AutoSize = true;
+            enabledCheck.Margin = new Padding(3, 3, 3, 10);
 
-            Label engineLabel = CreateLabel(TextResources.VoiceEngine, 14, 230);
-            engineCombo = new ComboBox();
-            engineCombo.DropDownStyle = ComboBoxStyle.DropDownList;
-            engineCombo.Location = new Point(112, 228);
-            engineCombo.Size = new Size(200, 24);
-            engineCombo.Items.Add(TextResources.VoiceEngineSupertonic);
-            engineCombo.Items.Add(TextResources.VoiceEngineSupertoneApi);
-
-            Label genderLabel = CreateLabel(TextResources.VoiceGender, 14, 264);
-            maleCheck = new CheckBox();
-            maleCheck.Text = TextResources.GenderMale;
-            maleCheck.Location = new Point(112, 262);
-            maleCheck.Size = new Size(70, 24);
-            maleCheck.CheckedChanged += OnGenderCheckedChanged;
-
-            femaleCheck = new CheckBox();
-            femaleCheck.Text = TextResources.GenderFemale;
-            femaleCheck.Location = new Point(190, 262);
-            femaleCheck.Size = new Size(70, 24);
-            femaleCheck.CheckedChanged += OnGenderCheckedChanged;
-
-            Label toneLabel = CreateLabel(TextResources.VoiceTone, 14, 298);
-            toneTrack = new TrackBar();
-            toneTrack.Location = new Point(112, 294);
-            toneTrack.Size = new Size(300, 45);
-            toneTrack.Minimum = 1;
-            toneTrack.Maximum = 5;
-            toneTrack.TickFrequency = 1;
-            toneTrack.SmallChange = 1;
-            toneTrack.LargeChange = 1;
-            toneTrack.ValueChanged += delegate { UpdateGaugeLabels(); };
-
-            toneValueLabel = new Label();
-            toneValueLabel.Location = new Point(420, 301);
-            toneValueLabel.Size = new Size(58, 20);
-
-            Label speedLabel = CreateLabel(TextResources.Speed, 14, 352);
-            speedTrack = new TrackBar();
-            speedTrack.Location = new Point(112, 348);
-            speedTrack.Size = new Size(300, 45);
-            speedTrack.Minimum = VoiceSettings.MinSpeedPercent;
-            speedTrack.Maximum = VoiceSettings.MaxSpeedPercent;
-            speedTrack.TickFrequency = 25;
-            speedTrack.SmallChange = 5;
-            speedTrack.LargeChange = 25;
-            speedTrack.ValueChanged += delegate { UpdateGaugeLabels(); };
-
-            speedValueLabel = new Label();
-            speedValueLabel.Location = new Point(420, 355);
-            speedValueLabel.Size = new Size(58, 20);
-
-            Label stepsLabel = CreateLabel(TextResources.VoiceQuality, 14, 406);
-            stepsTrack = new TrackBar();
-            stepsTrack.Location = new Point(112, 402);
-            stepsTrack.Size = new Size(300, 45);
-            stepsTrack.Minimum = VoiceSettings.MinLocalSteps;
-            stepsTrack.Maximum = VoiceSettings.MaxLocalSteps;
-            stepsTrack.TickFrequency = 4;
-            stepsTrack.SmallChange = 1;
-            stepsTrack.LargeChange = 4;
-            stepsTrack.ValueChanged += delegate { UpdateGaugeLabels(); };
-
-            stepsValueLabel = new Label();
-            stepsValueLabel.Location = new Point(420, 409);
-            stepsValueLabel.Size = new Size(58, 20);
-
-            Label apiLabel = CreateLabel(TextResources.ApiKey, 14, 50);
             apiKeyBox = new TextBox();
-            apiKeyBox.Location = new Point(112, 48);
-            apiKeyBox.Size = new Size(366, 22);
             apiKeyBox.PasswordChar = '*';
+            apiKeyBox.Dock = DockStyle.Fill;
 
             apiKeyStatusLabel = new Label();
-            apiKeyStatusLabel.Location = new Point(112, 72);
-            apiKeyStatusLabel.Size = new Size(366, 20);
+            apiKeyStatusLabel.AutoSize = true;
+            apiKeyStatusLabel.Margin = new Padding(3, 0, 3, 10);
 
-            Label voiceIdLabel = CreateLabel(TextResources.VoiceId, 14, 100);
             voiceIdBox = new TextBox();
-            voiceIdBox.Location = new Point(112, 98);
-            voiceIdBox.Size = new Size(366, 22);
+            voiceIdBox.Dock = DockStyle.Fill;
 
-            Label languageLabel = CreateLabel(TextResources.Language, 14, 130);
             languageCombo = new ComboBox();
             languageCombo.DropDownStyle = ComboBoxStyle.DropDownList;
-            languageCombo.Location = new Point(112, 128);
-            languageCombo.Size = new Size(100, 24);
+            languageCombo.Width = 90;
             languageCombo.Items.Add("ko");
             languageCombo.Items.Add("en");
             languageCombo.Items.Add("ja");
@@ -4650,92 +4586,173 @@ namespace CursorImeIndicator
             languageCombo.Items.Add("ru");
             languageCombo.Items.Add("vi");
 
-            Label modelLabel = CreateLabel(TextResources.Model, 222, 130);
-            modelLabel.Size = new Size(54, 20);
+            Label modelLabel = new Label();
+            modelLabel.Text = TextResources.Model;
+            modelLabel.AutoSize = true;
+            modelLabel.TextAlign = ContentAlignment.MiddleLeft;
+            modelLabel.Margin = new Padding(18, 6, 6, 3);
+
             modelCombo = new ComboBox();
             modelCombo.DropDownStyle = ComboBoxStyle.DropDown;
-            modelCombo.Location = new Point(284, 128);
-            modelCombo.Size = new Size(194, 24);
+            modelCombo.Width = 190;
             modelCombo.Items.Add("sona_speech_1");
             modelCombo.Items.Add("sona_speech_2");
             modelCombo.Items.Add("sona_speech_2_flash");
             modelCombo.Items.Add("sona_speech_2t");
             modelCombo.Items.Add("supertonic_api_1");
 
-            Label styleLabel = CreateLabel(TextResources.Style, 14, 162);
-            styleBox = new TextBox();
-            styleBox.Location = new Point(112, 160);
-            styleBox.Size = new Size(366, 22);
+            FlowLayoutPanel languageRow = CreateInlineRow();
+            languageRow.Controls.Add(languageCombo);
+            languageRow.Controls.Add(modelLabel);
+            languageRow.Controls.Add(modelCombo);
 
-            Label maxTextLengthLabel = CreateLabel(TextResources.MaxTextLength, 14, 194);
+            styleBox = new TextBox();
+            styleBox.Dock = DockStyle.Fill;
+
             maxTextLengthNumeric = new NumericUpDown();
-            maxTextLengthNumeric.Location = new Point(112, 192);
-            maxTextLengthNumeric.Size = new Size(70, 22);
             maxTextLengthNumeric.Minimum = 1;
             maxTextLengthNumeric.Maximum = VoiceSettings.MaxAllowedTextLength;
+            maxTextLengthNumeric.Width = 90;
+
+            FlowLayoutPanel maxTextRow = CreateInlineRow();
+            maxTextRow.Controls.Add(maxTextLengthNumeric);
+
+            // Fills its column so the longest engine name is never clipped.
+            engineCombo = new ComboBox();
+            engineCombo.DropDownStyle = ComboBoxStyle.DropDownList;
+            engineCombo.Dock = DockStyle.Fill;
+            engineCombo.Items.Add(TextResources.VoiceEngineSupertonic);
+            engineCombo.Items.Add(TextResources.VoiceEngineSupertoneApi);
+
+            maleCheck = new CheckBox();
+            maleCheck.Text = TextResources.GenderMale;
+            maleCheck.AutoSize = true;
+            maleCheck.Margin = new Padding(3, 6, 18, 3);
+            maleCheck.CheckedChanged += OnGenderCheckedChanged;
+
+            femaleCheck = new CheckBox();
+            femaleCheck.Text = TextResources.GenderFemale;
+            femaleCheck.AutoSize = true;
+            femaleCheck.Margin = new Padding(3, 6, 3, 3);
+            femaleCheck.CheckedChanged += OnGenderCheckedChanged;
+
+            FlowLayoutPanel genderRow = CreateInlineRow();
+            genderRow.Controls.Add(maleCheck);
+            genderRow.Controls.Add(femaleCheck);
+
+            toneTrack = new TrackBar();
+            toneTrack.Minimum = 1;
+            toneTrack.Maximum = 5;
+            toneTrack.TickFrequency = 1;
+            toneTrack.SmallChange = 1;
+            toneTrack.LargeChange = 1;
+            toneTrack.ValueChanged += delegate { UpdateGaugeLabels(); };
+            toneValueLabel = new Label();
+
+            speedTrack = new TrackBar();
+            speedTrack.Minimum = VoiceSettings.MinSpeedPercent;
+            speedTrack.Maximum = VoiceSettings.MaxSpeedPercent;
+            speedTrack.TickFrequency = 25;
+            speedTrack.SmallChange = 5;
+            speedTrack.LargeChange = 25;
+            speedTrack.ValueChanged += delegate { UpdateGaugeLabels(); };
+            speedValueLabel = new Label();
+
+            stepsTrack = new TrackBar();
+            stepsTrack.Minimum = VoiceSettings.MinLocalSteps;
+            stepsTrack.Maximum = VoiceSettings.MaxLocalSteps;
+            stepsTrack.TickFrequency = 4;
+            stepsTrack.SmallChange = 1;
+            stepsTrack.LargeChange = 4;
+            stepsTrack.ValueChanged += delegate { UpdateGaugeLabels(); };
+            stepsValueLabel = new Label();
 
             Button localSetupButton = new Button();
             localSetupButton.Text = TextResources.VoiceLocalSetupMenu;
-            localSetupButton.Location = new Point(14, 455);
-            localSetupButton.Size = new Size(150, 28);
+            localSetupButton.AutoSize = true;
+            localSetupButton.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            localSetupButton.Padding = new Padding(8, 2, 8, 2);
             localSetupButton.Click += OnLocalSetupClicked;
 
+            // The status text gets whatever is left and ellipsises, so it can never
+            // grow underneath the button the way the old fixed rectangles did.
             localStatusLabel = new Label();
-            localStatusLabel.Location = new Point(172, 461);
-            localStatusLabel.Size = new Size(306, 20);
             localStatusLabel.AutoEllipsis = true;
+            localStatusLabel.Dock = DockStyle.Fill;
+            localStatusLabel.TextAlign = ContentAlignment.MiddleLeft;
+            localStatusLabel.Margin = new Padding(12, 3, 3, 3);
+
+            TableLayoutPanel localRow = new TableLayoutPanel();
+            localRow.ColumnCount = 2;
+            localRow.RowCount = 1;
+            localRow.Dock = DockStyle.Fill;
+            localRow.AutoSize = true;
+            localRow.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            localRow.Margin = new Padding(0, 10, 0, 0);
+            localRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            localRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+            localRow.Controls.Add(localSetupButton, 0, 0);
+            localRow.Controls.Add(localStatusLabel, 1, 0);
 
             Button clearKeyButton = new Button();
             clearKeyButton.Text = TextResources.ClearApiKey;
-            clearKeyButton.Location = new Point(14, 500);
-            clearKeyButton.Size = new Size(116, 28);
+            clearKeyButton.AutoSize = true;
+            clearKeyButton.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            clearKeyButton.Padding = new Padding(8, 2, 8, 2);
+            clearKeyButton.Anchor = AnchorStyles.Left;
+            clearKeyButton.Margin = new Padding(0, 6, 0, 0);
             clearKeyButton.Click += OnClearApiKeyClicked;
 
             Button saveButton = new Button();
             saveButton.Text = TextResources.Save;
-            saveButton.Location = new Point(318, 536);
-            saveButton.Size = new Size(76, 28);
+            saveButton.AutoSize = true;
+            saveButton.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            saveButton.Padding = new Padding(12, 2, 12, 2);
             saveButton.Click += OnSaveClicked;
 
             Button closeButton = new Button();
             closeButton.Text = TextResources.Close;
-            closeButton.Location = new Point(402, 536);
-            closeButton.Size = new Size(76, 28);
+            closeButton.AutoSize = true;
+            closeButton.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            closeButton.Padding = new Padding(12, 2, 12, 2);
             closeButton.Click += OnCloseClicked;
 
-            Controls.Add(enabledCheck);
-            Controls.Add(engineLabel);
-            Controls.Add(engineCombo);
-            Controls.Add(genderLabel);
-            Controls.Add(maleCheck);
-            Controls.Add(femaleCheck);
-            Controls.Add(toneLabel);
-            Controls.Add(toneTrack);
-            Controls.Add(toneValueLabel);
-            Controls.Add(speedLabel);
-            Controls.Add(speedTrack);
-            Controls.Add(speedValueLabel);
-            Controls.Add(stepsLabel);
-            Controls.Add(stepsTrack);
-            Controls.Add(stepsValueLabel);
-            Controls.Add(apiLabel);
-            Controls.Add(apiKeyBox);
-            Controls.Add(apiKeyStatusLabel);
-            Controls.Add(voiceIdLabel);
-            Controls.Add(voiceIdBox);
-            Controls.Add(languageLabel);
-            Controls.Add(languageCombo);
-            Controls.Add(modelLabel);
-            Controls.Add(modelCombo);
-            Controls.Add(styleLabel);
-            Controls.Add(styleBox);
-            Controls.Add(maxTextLengthLabel);
-            Controls.Add(maxTextLengthNumeric);
-            Controls.Add(localSetupButton);
-            Controls.Add(localStatusLabel);
-            Controls.Add(clearKeyButton);
-            Controls.Add(saveButton);
-            Controls.Add(closeButton);
+            FlowLayoutPanel buttonRow = new FlowLayoutPanel();
+            buttonRow.FlowDirection = FlowDirection.RightToLeft;
+            buttonRow.Dock = DockStyle.Fill;
+            buttonRow.AutoSize = true;
+            buttonRow.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            buttonRow.Margin = new Padding(0, 14, 0, 0);
+            buttonRow.Controls.Add(closeButton);
+            buttonRow.Controls.Add(saveButton);
+
+            TableLayoutPanel table = new TableLayoutPanel();
+            table.ColumnCount = 2;
+            table.Dock = DockStyle.Fill;
+            table.AutoSize = true;
+            table.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            table.Padding = new Padding(14, 12, 14, 12);
+            table.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+            table.MinimumSize = new Size(470, 0);
+
+            AddFullWidth(table, enabledCheck);
+            AddField(table, TextResources.ApiKey, apiKeyBox);
+            AddFullWidth(table, apiKeyStatusLabel);
+            AddField(table, TextResources.VoiceId, voiceIdBox);
+            AddField(table, TextResources.Language, languageRow);
+            AddField(table, TextResources.Style, styleBox);
+            AddField(table, TextResources.MaxTextLength, maxTextRow);
+            AddField(table, TextResources.VoiceEngine, engineCombo);
+            AddField(table, TextResources.VoiceGender, genderRow);
+            AddField(table, TextResources.VoiceTone, CreateSliderRow(toneTrack, toneValueLabel));
+            AddField(table, TextResources.Speed, CreateSliderRow(speedTrack, speedValueLabel));
+            AddField(table, TextResources.VoiceQuality, CreateSliderRow(stepsTrack, stepsValueLabel));
+            AddFullWidth(table, localRow);
+            AddFullWidth(table, clearKeyButton);
+            AddFullWidth(table, buttonRow);
+
+            Controls.Add(table);
 
             Reload();
         }
@@ -4838,6 +4855,69 @@ namespace CursorImeIndicator
             catch
             {
             }
+        }
+
+        private static FlowLayoutPanel CreateInlineRow()
+        {
+            FlowLayoutPanel row = new FlowLayoutPanel();
+            row.FlowDirection = FlowDirection.LeftToRight;
+            row.AutoSize = true;
+            row.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            row.WrapContents = false;
+            row.Margin = new Padding(0);
+            row.Padding = new Padding(0);
+            return row;
+        }
+
+        // The bar takes the leftover width and the readout sizes to its own text, so a
+        // three-digit percentage cannot push itself off the edge.
+        private static TableLayoutPanel CreateSliderRow(TrackBar track, Label valueLabel)
+        {
+            track.Dock = DockStyle.Fill;
+            track.Margin = new Padding(0, 0, 6, 0);
+
+            valueLabel.AutoSize = true;
+            valueLabel.Anchor = AnchorStyles.Left;
+            valueLabel.TextAlign = ContentAlignment.MiddleLeft;
+            valueLabel.Margin = new Padding(3, 12, 3, 3);
+
+            TableLayoutPanel row = new TableLayoutPanel();
+            row.ColumnCount = 2;
+            row.RowCount = 1;
+            row.Dock = DockStyle.Fill;
+            row.AutoSize = true;
+            row.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            row.Margin = new Padding(0);
+            row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+            row.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            row.Controls.Add(track, 0, 0);
+            row.Controls.Add(valueLabel, 1, 0);
+            return row;
+        }
+
+        private static void AddField(TableLayoutPanel table, string labelText, Control control)
+        {
+            Label label = new Label();
+            label.Text = labelText;
+            label.AutoSize = true;
+            label.Anchor = AnchorStyles.Left;
+            label.TextAlign = ContentAlignment.MiddleLeft;
+            label.Margin = new Padding(3, 9, 12, 3);
+
+            int row = table.RowCount;
+            table.RowCount = row + 1;
+            table.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            table.Controls.Add(label, 0, row);
+            table.Controls.Add(control, 1, row);
+        }
+
+        private static void AddFullWidth(TableLayoutPanel table, Control control)
+        {
+            int row = table.RowCount;
+            table.RowCount = row + 1;
+            table.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            table.Controls.Add(control, 0, row);
+            table.SetColumnSpan(control, 2);
         }
 
         private static Label CreateLabel(string text, int x, int y)
