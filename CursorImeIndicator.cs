@@ -175,7 +175,9 @@ namespace CursorImeIndicator
         public const string SaveSmallCutout = "\uC791\uAC8C \uC800\uC7A5";
         public const string MaxImageSize = "\uCD5C\uB300 \uD06C\uAE30";
         public const string SizeMenu = "\uD06C\uAE30";
-        public const string DragSizeSettings = "\uB4DC\uB798\uADF8\uB85C \uD06C\uAE30 \uC870\uC815";
+        // Named for dragging, the entry hid the fact that the same window also
+        // takes a typed percentage.
+        public const string DragSizeSettings = "\uD06C\uAE30 \uC870\uC815 (\uC9C1\uC811 \uC785\uB825)";
         public const string AdjustFaceCenter = "\uAE00\uC790 \uC704\uCE58 \uC870\uC815";
         public const string ShowLabel = "\uAE00\uC790 \uD45C\uC2DC";
         public const string DisplayModeMenu = "\uD45C\uC2DC \uBAA8\uB4DC";
@@ -4504,11 +4506,11 @@ namespace CursorImeIndicator
         private readonly CheckBox maleCheck;
         private readonly CheckBox femaleCheck;
         private readonly TrackBar toneTrack;
-        private readonly Label toneValueLabel;
+        private readonly NumericUpDown toneValue;
         private readonly TrackBar speedTrack;
-        private readonly Label speedValueLabel;
+        private readonly NumericUpDown speedValue;
         private readonly TrackBar stepsTrack;
-        private readonly Label stepsValueLabel;
+        private readonly NumericUpDown stepsValue;
         private readonly TextBox apiKeyBox;
         private readonly Label apiKeyStatusLabel;
         private readonly TextBox voiceIdBox;
@@ -4519,6 +4521,7 @@ namespace CursorImeIndicator
         private readonly Label localStatusLabel;
         private readonly Action openSetup;
         private bool suppressGenderEvents;
+        private bool suppressGaugeEvents;
 
         public VoiceSettingsForm(VoiceSettings settings, Action onSaved, Action openSetup)
         {
@@ -4646,8 +4649,8 @@ namespace CursorImeIndicator
             toneTrack.TickFrequency = 1;
             toneTrack.SmallChange = 1;
             toneTrack.LargeChange = 1;
-            toneTrack.ValueChanged += delegate { UpdateGaugeLabels(); };
-            toneValueLabel = new Label();
+            toneTrack.ValueChanged += delegate { OnTrackMoved(); };
+            toneValue = CreateGaugeNumeric(toneTrack);
 
             speedTrack = new TrackBar();
             speedTrack.Minimum = VoiceSettings.MinSpeedPercent;
@@ -4655,8 +4658,9 @@ namespace CursorImeIndicator
             speedTrack.TickFrequency = 25;
             speedTrack.SmallChange = 5;
             speedTrack.LargeChange = 25;
-            speedTrack.ValueChanged += delegate { UpdateGaugeLabels(); };
-            speedValueLabel = new Label();
+            speedTrack.ValueChanged += delegate { OnTrackMoved(); };
+            speedValue = CreateGaugeNumeric(speedTrack);
+            speedValue.Increment = 5;
 
             stepsTrack = new TrackBar();
             stepsTrack.Minimum = VoiceSettings.MinLocalSteps;
@@ -4664,8 +4668,8 @@ namespace CursorImeIndicator
             stepsTrack.TickFrequency = 4;
             stepsTrack.SmallChange = 1;
             stepsTrack.LargeChange = 4;
-            stepsTrack.ValueChanged += delegate { UpdateGaugeLabels(); };
-            stepsValueLabel = new Label();
+            stepsTrack.ValueChanged += delegate { OnTrackMoved(); };
+            stepsValue = CreateGaugeNumeric(stepsTrack);
 
             Button localSetupButton = new Button();
             localSetupButton.Text = TextResources.VoiceLocalSetupMenu;
@@ -4745,9 +4749,9 @@ namespace CursorImeIndicator
             AddField(table, TextResources.MaxTextLength, maxTextRow);
             AddField(table, TextResources.VoiceEngine, engineCombo);
             AddField(table, TextResources.VoiceGender, genderRow);
-            AddField(table, TextResources.VoiceTone, CreateSliderRow(toneTrack, toneValueLabel));
-            AddField(table, TextResources.Speed, CreateSliderRow(speedTrack, speedValueLabel));
-            AddField(table, TextResources.VoiceQuality, CreateSliderRow(stepsTrack, stepsValueLabel));
+            AddField(table, TextResources.VoiceTone, CreateSliderRow(toneTrack, toneValue, ""));
+            AddField(table, TextResources.Speed, CreateSliderRow(speedTrack, speedValue, "%"));
+            AddField(table, TextResources.VoiceQuality, CreateSliderRow(stepsTrack, stepsValue, ""));
             AddFullWidth(table, localRow);
             AddFullWidth(table, clearKeyButton);
             AddFullWidth(table, buttonRow);
@@ -4779,9 +4783,11 @@ namespace CursorImeIndicator
 
         private void UpdateGaugeLabels()
         {
-            toneValueLabel.Text = toneTrack.Value.ToString(CultureInfo.InvariantCulture);
-            speedValueLabel.Text = speedTrack.Value.ToString(CultureInfo.InvariantCulture) + "%";
-            stepsValueLabel.Text = stepsTrack.Value.ToString(CultureInfo.InvariantCulture);
+            suppressGaugeEvents = true;
+            toneValue.Value = toneTrack.Value;
+            speedValue.Value = speedTrack.Value;
+            stepsValue.Value = stepsTrack.Value;
+            suppressGaugeEvents = false;
         }
 
         public void Reload()
@@ -4857,6 +4863,38 @@ namespace CursorImeIndicator
             }
         }
 
+        // The slider stays the value that gets saved; the box is a second way to set it.
+        private NumericUpDown CreateGaugeNumeric(TrackBar track)
+        {
+            NumericUpDown numeric = new NumericUpDown();
+            numeric.Minimum = track.Minimum;
+            numeric.Maximum = track.Maximum;
+            numeric.Width = 62;
+            numeric.TextAlign = HorizontalAlignment.Right;
+            numeric.ValueChanged += delegate
+            {
+                if (suppressGaugeEvents)
+                    return;
+
+                int value = (int)numeric.Value;
+                if (value < track.Minimum)
+                    value = track.Minimum;
+                if (value > track.Maximum)
+                    value = track.Maximum;
+                if (track.Value != value)
+                    track.Value = value;   // re-enters through OnTrackMoved, which is guarded
+            };
+            return numeric;
+        }
+
+        private void OnTrackMoved()
+        {
+            if (suppressGaugeEvents)
+                return;
+
+            UpdateGaugeLabels();
+        }
+
         private static FlowLayoutPanel CreateInlineRow()
         {
             FlowLayoutPanel row = new FlowLayoutPanel();
@@ -4871,18 +4909,23 @@ namespace CursorImeIndicator
 
         // The bar takes the leftover width and the readout sizes to its own text, so a
         // three-digit percentage cannot push itself off the edge.
-        private static TableLayoutPanel CreateSliderRow(TrackBar track, Label valueLabel)
+        private static TableLayoutPanel CreateSliderRow(TrackBar track, NumericUpDown box, string suffix)
         {
             track.Dock = DockStyle.Fill;
             track.Margin = new Padding(0, 0, 6, 0);
 
-            valueLabel.AutoSize = true;
-            valueLabel.Anchor = AnchorStyles.Left;
-            valueLabel.TextAlign = ContentAlignment.MiddleLeft;
-            valueLabel.Margin = new Padding(3, 12, 3, 3);
+            box.Anchor = AnchorStyles.Left;
+            box.Margin = new Padding(3, 10, 2, 3);
+
+            Label suffixLabel = new Label();
+            suffixLabel.Text = suffix;
+            suffixLabel.AutoSize = true;
+            suffixLabel.Anchor = AnchorStyles.Left;
+            suffixLabel.TextAlign = ContentAlignment.MiddleLeft;
+            suffixLabel.Margin = new Padding(0, 14, 3, 3);
 
             TableLayoutPanel row = new TableLayoutPanel();
-            row.ColumnCount = 2;
+            row.ColumnCount = 3;
             row.RowCount = 1;
             row.Dock = DockStyle.Fill;
             row.AutoSize = true;
@@ -4890,8 +4933,10 @@ namespace CursorImeIndicator
             row.Margin = new Padding(0);
             row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
             row.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            row.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
             row.Controls.Add(track, 0, 0);
-            row.Controls.Add(valueLabel, 1, 0);
+            row.Controls.Add(box, 1, 0);
+            row.Controls.Add(suffixLabel, 2, 0);
             return row;
         }
 
