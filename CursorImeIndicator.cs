@@ -334,6 +334,9 @@ namespace CursorImeIndicator
         private bool enabled = true;
         private bool trayMenuOpen;
         private bool voiceBusy;
+        private readonly Queue<string> voiceQueue = new Queue<string>();
+        private readonly object voiceQueueSync = new object();
+        private const int VoiceQueueLimit = 8;
         private bool missingVoiceConfigBalloonShown;
         private string lastText = "";
         private string lastVoiceText = "";
@@ -582,6 +585,9 @@ namespace CursorImeIndicator
         private void OnVoiceStopHotkeyPressed()
         {
             voiceStopRequested = true;
+            // Stop means stop: without this the queue would keep talking after the user
+            // asked for silence.
+            ClearVoiceQueue();
             bool stopped = VoiceAudioPlayer.StopCurrent();
             if (stopped || voiceBusy)
                 ShowVoiceBalloon(TextResources.VoiceStopped, 1200);
@@ -1152,7 +1158,26 @@ namespace CursorImeIndicator
 
             if (voiceBusy)
             {
-                VoiceDebugLog.Write("skip: voiceBusy");
+                // Selecting several passages in a row is the normal way to use this, so a
+                // request that lands mid-playback waits its turn instead of being thrown away.
+                int depth;
+                lock (voiceQueueSync)
+                {
+                    if (voiceQueue.Count >= VoiceQueueLimit)
+                    {
+                        VoiceDebugLog.Write("skip: queue full (" + voiceQueue.Count + ")");
+                        return;
+                    }
+
+                    voiceQueue.Enqueue(text);
+                    depth = voiceQueue.Count;
+                }
+
+                // Keep the de-duplication window honest: the queued text is what will be
+                // spoken next, so it counts as the most recent request.
+                lastVoiceText = text;
+                lastVoiceRequestUtc = DateTime.UtcNow;
+                VoiceDebugLog.Write("queued; depth=" + depth);
                 return;
             }
 
@@ -1201,14 +1226,63 @@ namespace CursorImeIndicator
                     voiceBusy = false;
                     if (notInstalled)
                     {
+                        // Nothing queued can succeed until the engine exists.
+                        ClearVoiceQueue();
                         OfferSupertonicSetup();
                         return;
                     }
 
                     if (!string.IsNullOrEmpty(error))
                         ShowVoiceBalloon(TextResources.VoiceFailed + error, 4500);
+
+                    DrainVoiceQueue();
                 });
             });
+        }
+
+        // Both the drag watcher and the completion callback run through uiContext, so the
+        // queue is only touched from one thread in practice; the lock is there so a future
+        // caller on another thread cannot corrupt it.
+        private void DrainVoiceQueue()
+        {
+            if (voiceBusy)
+                return;
+
+            if (voiceStopRequested)
+            {
+                ClearVoiceQueue();
+                return;
+            }
+
+            string next = null;
+            int remaining = 0;
+            lock (voiceQueueSync)
+            {
+                if (voiceQueue.Count > 0)
+                {
+                    next = voiceQueue.Dequeue();
+                    remaining = voiceQueue.Count;
+                }
+            }
+
+            if (next == null)
+                return;
+
+            VoiceDebugLog.Write("dequeue; remaining=" + remaining);
+            SpeakText(next, false);
+        }
+
+        private void ClearVoiceQueue()
+        {
+            int dropped;
+            lock (voiceQueueSync)
+            {
+                dropped = voiceQueue.Count;
+                voiceQueue.Clear();
+            }
+
+            if (dropped > 0)
+                VoiceDebugLog.Write("queue cleared; dropped=" + dropped);
         }
 
         private void PostToUi(Action action)
@@ -7725,7 +7799,15 @@ namespace CursorImeIndicator
             if (speedPercent == 100)
                 return;
 
-            VoiceTimeStretch.TryStretchWavInPlace(path, speedPercent / 100.0d);
+            long before = 0;
+            try { before = new FileInfo(path).Length; } catch { }
+
+            bool ok = VoiceTimeStretch.TryStretchWavInPlace(path, speedPercent / 100.0d);
+
+            long after = 0;
+            try { after = new FileInfo(path).Length; } catch { }
+            VoiceDebugLog.Write("tempo " + speedPercent + "%: " + (ok ? "applied" : "skipped")
+                + " " + before + " -> " + after + " bytes");
         }
 
         private static string BuildRequestJson(VoiceRequestOptions request)
