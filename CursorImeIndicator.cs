@@ -326,6 +326,8 @@ namespace CursorImeIndicator
         private readonly SynchronizationContext uiContext;
         private Icon currentTrayIcon;
         private SizeSettingsForm sizeSettingsForm;
+        private NumericUpDown sizeNumeric;
+        private bool suppressSizeNumeric;
         private FaceCenterSettingsForm faceCenterSettingsForm;
         private ImageSelectionForm imageSelectionForm;
         private VoiceSettingsForm voiceSettingsForm;
@@ -438,7 +440,46 @@ namespace CursorImeIndicator
             }
 
             menu.DropDownItems.Add(new ToolStripSeparator());
-            menu.DropDownItems.Add(new ToolStripMenuItem(TextResources.DragSizeSettings, null, OnOpenSizeSettings));
+
+            // The exact percentage lives in the menu rather than behind a window: opening a
+            // dialog to type two digits means crossing the screen and closing it again.
+            Label sizeLabel = new Label();
+            sizeLabel.Text = TextResources.SizeGain;
+            sizeLabel.AutoSize = true;
+            sizeLabel.TextAlign = ContentAlignment.MiddleLeft;
+            sizeLabel.Margin = new Padding(4, 7, 6, 3);
+
+            sizeNumeric = new NumericUpDown();
+            sizeNumeric.Minimum = AppSettings.MinSizePercent;
+            sizeNumeric.Maximum = AppSettings.MaxSizePercent;
+            sizeNumeric.Increment = 5;
+            sizeNumeric.Width = 64;
+            sizeNumeric.TextAlign = HorizontalAlignment.Right;
+            sizeNumeric.Margin = new Padding(0, 3, 2, 3);
+            sizeNumeric.ValueChanged += OnSizeNumericChanged;
+
+            Label percentLabel = new Label();
+            percentLabel.Text = "%";
+            percentLabel.AutoSize = true;
+            percentLabel.TextAlign = ContentAlignment.MiddleLeft;
+            percentLabel.Margin = new Padding(0, 7, 6, 3);
+
+            FlowLayoutPanel sizePanel = new FlowLayoutPanel();
+            sizePanel.FlowDirection = FlowDirection.LeftToRight;
+            sizePanel.WrapContents = false;
+            sizePanel.AutoSize = true;
+            sizePanel.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+            sizePanel.Margin = new Padding(0);
+            sizePanel.Padding = new Padding(2, 1, 2, 1);
+            sizePanel.BackColor = Color.Transparent;
+            sizePanel.Controls.Add(sizeLabel);
+            sizePanel.Controls.Add(sizeNumeric);
+            sizePanel.Controls.Add(percentLabel);
+
+            ToolStripControlHost sizeHost = new ToolStripControlHost(sizePanel);
+            sizeHost.AutoSize = true;
+            sizeHost.Margin = new Padding(0);
+            menu.DropDownItems.Add(sizeHost);
             return menu;
         }
 
@@ -861,6 +902,14 @@ namespace CursorImeIndicator
                 indicatorForm.RefreshAssets();
                 ShowBackgroundRemovalResult(saved, failed);
             }
+        }
+
+        private void OnSizeNumericChanged(object sender, EventArgs e)
+        {
+            if (suppressSizeNumeric)
+                return;
+
+            SetSizePercent((int)sizeNumeric.Value);
         }
 
         private void OnSizePresetClick(object sender, EventArgs e)
@@ -1409,6 +1458,13 @@ namespace CursorImeIndicator
                 item.Checked = item.Tag != null && (int)item.Tag == settings.SizePercent;
 
             sizeMenu.Text = TextResources.SizeMenu + " (" + settings.SizePercent + "%)";
+
+            if (sizeNumeric != null)
+            {
+                suppressSizeNumeric = true;
+                sizeNumeric.Value = AppSettings.ClampSizePercent(settings.SizePercent);
+                suppressSizeNumeric = false;
+            }
         }
 
         private void UpdateDisplayModeMenuChecks()
