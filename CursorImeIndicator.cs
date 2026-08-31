@@ -6795,6 +6795,18 @@ namespace CursorImeIndicator
 
         public static string TryCopySelectionText()
         {
+            // Ask the focused control for its selection first. In a terminal Ctrl+C is an
+            // interrupt rather than a copy - it lands on the prompt as ^C and would kill a
+            // running command - and any keypress at all is reason enough for a terminal to
+            // drop the selection. When the control can simply hand the text over, nothing
+            // needs to be pressed.
+            string selected = ReadSelectionViaAutomation(AutomationTimeoutMs);
+            if (selected != null)
+            {
+                VoiceDebugLog.Write("selection read via UI Automation (" + selected.Length + " chars)");
+                return selected;
+            }
+
             CancelPendingRestore();
 
             // Clipboard.GetDataObject() hands back a live proxy whose data dies
@@ -6817,6 +6829,76 @@ namespace CursorImeIndicator
 
             ScheduleRestore(previousData, hadPreviousData, NativeMethods.GetClipboardSequenceNumber());
             return copied;
+        }
+
+        private const int AutomationTimeoutMs = 400;
+
+        // Runs on its own STA thread: a misbehaving automation provider can block for a long
+        // time, and this is called from the UI thread where that would freeze the indicator.
+        // A timeout just means falling back to the clipboard, which is the old behaviour.
+        private static string ReadSelectionViaAutomation(int timeoutMs)
+        {
+            string result = null;
+            try
+            {
+                Thread worker = new Thread(delegate() { result = ReadSelectionCore(); });
+                worker.IsBackground = true;
+                worker.SetApartmentState(ApartmentState.STA);
+                worker.Start();
+                if (!worker.Join(timeoutMs))
+                {
+                    VoiceDebugLog.Write("UI Automation timed out; using clipboard");
+                    return null;
+                }
+            }
+            catch
+            {
+                return null;
+            }
+
+            return result;
+        }
+
+        private static string ReadSelectionCore()
+        {
+            try
+            {
+                System.Windows.Automation.AutomationElement focused =
+                    System.Windows.Automation.AutomationElement.FocusedElement;
+                if (focused == null)
+                    return null;
+
+                object pattern;
+                if (!focused.TryGetCurrentPattern(
+                        System.Windows.Automation.TextPattern.Pattern, out pattern))
+                    return null;
+
+                System.Windows.Automation.TextPattern textPattern =
+                    pattern as System.Windows.Automation.TextPattern;
+                if (textPattern == null)
+                    return null;
+
+                System.Windows.Automation.Text.TextPatternRange[] ranges = textPattern.GetSelection();
+                if (ranges == null || ranges.Length == 0)
+                    return null;
+
+                StringBuilder builder = new StringBuilder();
+                for (int i = 0; i < ranges.Length; i++)
+                {
+                    if (ranges[i] != null)
+                        builder.Append(ranges[i].GetText(-1));
+                }
+
+                string selected = builder.ToString();
+
+                // An empty range means "nothing is selected", not "the selection is blank" -
+                // fall through to the clipboard so a caret-only control still behaves.
+                return selected.Trim().Length == 0 ? null : selected;
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         private static void ScheduleRestore(IDataObject previousData, bool hadPreviousData, uint sequence)
