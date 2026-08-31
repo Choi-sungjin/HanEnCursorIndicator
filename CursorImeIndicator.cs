@@ -6819,7 +6819,10 @@ namespace CursorImeIndicator
             try
             {
                 TryClearClipboard();
-                SendKeys.SendWait("^c");
+                string keystroke = CopyKeystrokeForForeground();
+                VoiceDebugLog.Write("clipboard fallback: focus='" + lastFocusedClass
+                    + "' key=" + keystroke);
+                SendKeys.SendWait(keystroke);
                 copied = ReadTextWithRetry() ?? "";
             }
             catch
@@ -6832,6 +6835,11 @@ namespace CursorImeIndicator
         }
 
         private const int AutomationTimeoutMs = 400;
+
+        // Set by ReadSelectionCore even when it declines, so the fallback knows what it is
+        // about to type into. Chromium reports an element's DOM class list here, which is
+        // how an xterm.js terminal inside Cursor or VS Code is recognised.
+        private static string lastFocusedClass = "";
 
         // Runs on its own STA thread: a misbehaving automation provider can block for a long
         // time, and this is called from the UI thread where that would freeze the indicator.
@@ -6866,21 +6874,39 @@ namespace CursorImeIndicator
                 System.Windows.Automation.AutomationElement focused =
                     System.Windows.Automation.AutomationElement.FocusedElement;
                 if (focused == null)
+                {
+                    lastFocusedClass = "";
+                    VoiceDebugLog.Write("uia: no focused element");
                     return null;
+                }
+
+                string who = "?";
+                try { who = focused.Current.ClassName; }
+                catch { }
+                lastFocusedClass = who ?? "";
 
                 object pattern;
                 if (!focused.TryGetCurrentPattern(
                         System.Windows.Automation.TextPattern.Pattern, out pattern))
+                {
+                    VoiceDebugLog.Write("uia: '" + who + "' has no TextPattern");
                     return null;
+                }
 
                 System.Windows.Automation.TextPattern textPattern =
                     pattern as System.Windows.Automation.TextPattern;
                 if (textPattern == null)
+                {
+                    VoiceDebugLog.Write("uia: '" + who + "' TextPattern cast failed");
                     return null;
+                }
 
                 System.Windows.Automation.Text.TextPatternRange[] ranges = textPattern.GetSelection();
                 if (ranges == null || ranges.Length == 0)
+                {
+                    VoiceDebugLog.Write("uia: '" + who + "' reports no selection range");
                     return null;
+                }
 
                 StringBuilder builder = new StringBuilder();
                 for (int i = 0; i < ranges.Length; i++)
@@ -6893,12 +6919,53 @@ namespace CursorImeIndicator
 
                 // An empty range means "nothing is selected", not "the selection is blank" -
                 // fall through to the clipboard so a caret-only control still behaves.
-                return selected.Trim().Length == 0 ? null : selected;
+                if (selected.Trim().Length == 0)
+                {
+                    VoiceDebugLog.Write("uia: '" + who + "' selection is empty");
+                    return null;
+                }
+
+                return selected;
+            }
+            catch (Exception ex)
+            {
+                VoiceDebugLog.Write("uia failed: " + ex.Message);
+                return null;
+            }
+        }
+
+        // Ctrl+C means "interrupt" wherever a shell is listening, so the fallback picks a
+        // copy binding that does not. Two kinds of terminal have to be told apart:
+        //   - a real console window (conhost, Windows Terminal) takes Ctrl+Insert
+        //   - xterm.js inside Cursor / VS Code takes Ctrl+Shift+C
+        // Anything else is an ordinary text control where Ctrl+C is just a copy.
+        private static string CopyKeystrokeForForeground()
+        {
+            string focusedClass = lastFocusedClass ?? "";
+            if (focusedClass.IndexOf("xterm", StringComparison.OrdinalIgnoreCase) >= 0)
+                return "^+c";
+
+            try
+            {
+                IntPtr foreground = NativeMethods.GetForegroundWindow();
+                if (foreground != IntPtr.Zero)
+                {
+                    StringBuilder className = new StringBuilder(256);
+                    if (NativeMethods.GetClassName(foreground, className, className.Capacity) != 0)
+                    {
+                        string name = className.ToString();
+                        if (name == "ConsoleWindowClass"
+                            || name == "PseudoConsoleWindow"
+                            || name.IndexOf("CASCADIA", StringComparison.OrdinalIgnoreCase) >= 0)
+                            return "^{INSERT}";
+                    }
+                }
             }
             catch
             {
-                return null;
             }
+
+            return "^c";
         }
 
         private static void ScheduleRestore(IDataObject previousData, bool hadPreviousData, uint sequence)
@@ -9892,6 +9959,9 @@ namespace CursorImeIndicator
 
         [DllImport("user32.dll")]
         public static extern IntPtr GetForegroundWindow();
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        public static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
 
         [DllImport("user32.dll")]
         public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
