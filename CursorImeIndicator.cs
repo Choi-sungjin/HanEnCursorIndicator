@@ -6852,6 +6852,7 @@ namespace CursorImeIndicator
             public string Selection;  // non-null when the text could be read outright
             public string ClassName = "";
             public string ControlType = "";
+            public bool WindowHostsText;   // decided by window class, before any UIA call
 
             public string Describe()
             {
@@ -6870,6 +6871,11 @@ namespace CursorImeIndicator
         private static AutomationProbe ProbeDragPoint(int timeoutMs, Point point)
         {
             AutomationProbe probe = new AutomationProbe();
+
+            // A plain window-class lookup answers instantly and never blocks, unlike an
+            // automation query into a busy process.
+            probe.WindowHostsText = WindowHostsText(point);
+
             try
             {
                 Thread worker = new Thread(delegate() { ProbeCore(probe, point); });
@@ -6878,8 +6884,22 @@ namespace CursorImeIndicator
                 worker.Start();
                 if (!worker.Join(timeoutMs))
                 {
-                    VoiceDebugLog.Write("UI Automation timed out; using clipboard");
-                    probe.Decided = false;
+                    // An app too busy to answer automation is exactly the app that will hold
+                    // SendKeys.SendWait for seconds. Unless the window is a known text host,
+                    // treat the silence as "not text" rather than as permission to press keys.
+                    if (probe.WindowHostsText)
+                    {
+                        VoiceDebugLog.Write("UI Automation timed out; window hosts text, using clipboard");
+                        probe.Decided = false;
+                    }
+                    else
+                    {
+                        VoiceDebugLog.Write("UI Automation timed out and the window is not a text host");
+                        probe.Decided = true;
+                        probe.IsText = false;
+                        probe.ControlType = "timeout";
+                    }
+
                     probe.Selection = null;
                 }
             }
@@ -6986,8 +7006,8 @@ namespace CursorImeIndicator
 
                 // Failing that, the window itself is evidence. A browser, an Electron app or a
                 // terminal hosts text by definition; an image editor's canvas does not, and
-                // that is the case worth refusing.
-                if (!isText && WindowHostsText(point))
+                // that is the case worth refusing. Already computed before the query started.
+                if (!isText && probe.WindowHostsText)
                     isText = true;
 
                 probe.IsText = isText;
