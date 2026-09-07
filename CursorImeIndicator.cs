@@ -344,7 +344,9 @@ namespace CursorImeIndicator
         private bool voiceBusy;
         private readonly Queue<string> voiceQueue = new Queue<string>();
         private readonly object voiceQueueSync = new object();
-        private const int VoiceQueueLimit = 8;
+        // Deep enough to hold one long selection split into pieces, still bounded so a
+        // runaway cannot talk for ever - the stop hotkey clears it.
+        private const int VoiceQueueLimit = 24;
         private bool missingVoiceConfigBalloonShown;
         private string lastText = "";
         private string lastVoiceText = "";
@@ -1194,23 +1196,31 @@ namespace CursorImeIndicator
 
         private void SpeakSanitizedText(string rawText, bool manual)
         {
-            string text = VoiceTextSanitizer.Sanitize(rawText, voiceSettings.MaxTextLength);
-            VoiceDebugLog.Write("sanitized length=" + text.Length);
-            if (text.Length == 0)
+            List<string> chunks = VoiceTextSanitizer.SanitizeToChunks(rawText, voiceSettings.MaxTextLength);
+            if (chunks.Count == 0)
             {
+                VoiceDebugLog.Write("sanitized length=0");
                 if (manual)
                     ShowVoiceBalloon(TextResources.VoiceNoText, 2500);
                 return;
             }
 
+            int total = 0;
+            for (int i = 0; i < chunks.Count; i++)
+                total += chunks[i].Length;
+            VoiceDebugLog.Write("sanitized length=" + total + " in " + chunks.Count + " part(s)");
+
             DateTime now = DateTime.UtcNow;
-            if (!manual && text == lastVoiceText && (now - lastVoiceRequestUtc).TotalSeconds < 2)
+            if (!manual && chunks[0] == lastVoiceText && (now - lastVoiceRequestUtc).TotalSeconds < 2)
             {
                 VoiceDebugLog.Write("skip: duplicate text");
                 return;
             }
 
-            SpeakText(text, manual);
+            // The first piece starts straight away; the rest meet voiceBusy and land in the
+            // queue in order, so a long selection is read through instead of cut off.
+            for (int i = 0; i < chunks.Count; i++)
+                SpeakText(chunks[i], manual && i == 0);
         }
 
         private void SpeakText(string text, bool manual)
@@ -6642,12 +6652,79 @@ namespace CursorImeIndicator
     {
         private static readonly char[] SentenceBreaks = new[] { '.', '?', '!' };
 
+        // One selection may not occupy the queue forever; past this the tail is dropped and
+        // said so in the log.
+        public const int MaxChunks = 20;
+
+        // The whole selection, cleaned, cut into pieces no longer than the limit. Cutting at a
+        // sentence end where possible keeps each piece speakable on its own.
+        public static List<string> SanitizeToChunks(string rawText, int maxLength)
+        {
+            List<string> chunks = new List<string>();
+            string text = Clean(rawText);
+            if (!ContainsReadableCharacter(text))
+                return chunks;
+
+            int limit = VoiceSettings.ClampMaxTextLength(maxLength);
+            int position = 0;
+            while (position < text.Length && chunks.Count < MaxChunks)
+            {
+                int cut = FindCut(text, position, limit);
+                if (cut <= position)
+                    cut = Math.Min(position + limit, text.Length);
+
+                string piece = text.Substring(position, cut - position).Trim();
+                if (piece.Length > 0)
+                    chunks.Add(piece);
+
+                position = cut;
+                while (position < text.Length && text[position] == ' ')
+                    position++;
+            }
+
+            return chunks;
+        }
+
+        // Where to end a piece that starts at `start`: a sentence break if one falls in the
+        // back half of the allowance, else a word boundary, else the hard limit.
+        private static int FindCut(string text, int start, int limit)
+        {
+            int end = start + limit;
+            if (end >= text.Length)
+                return text.Length;
+
+            int span = end - start;
+            int floor = start + Math.Max(12, limit / 2);
+
+            int sentenceCut = text.LastIndexOfAny(SentenceBreaks, end - 1, span);
+            if (sentenceCut > floor)
+                return sentenceCut + 1;
+
+            int spaceCut = text.LastIndexOf(' ', end - 1, span);
+            if (spaceCut > floor)
+                return spaceCut;
+
+            return end;
+        }
+
         public static string Sanitize(string rawText, int maxLength)
         {
             if (string.IsNullOrEmpty(rawText))
                 return "";
 
             int limit = VoiceSettings.ClampMaxTextLength(maxLength);
+            string cleaned = Clean(rawText);
+            if (!ContainsReadableCharacter(cleaned))
+                return "";
+
+            return TrimToLength(cleaned, limit);
+        }
+
+        private static string Clean(string rawText)
+        {
+            if (string.IsNullOrEmpty(rawText))
+                return "";
+
             StringBuilder builder = new StringBuilder();
             bool lastWasSpace = true;
             bool lastWasPunctuation = false;
@@ -6685,11 +6762,7 @@ namespace CursorImeIndicator
                 }
             }
 
-            string text = builder.ToString().Trim();
-            if (!ContainsReadableCharacter(text))
-                return "";
-
-            return TrimToLength(text, limit);
+            return builder.ToString().Trim();
         }
 
         private static bool IsAllowedTextCharacter(char c)
