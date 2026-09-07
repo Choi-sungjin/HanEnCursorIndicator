@@ -1174,7 +1174,7 @@ namespace CursorImeIndicator
                 selectionDragWatcher.Stop();
         }
 
-        private void OnSelectionDragCompleted()
+        private void OnSelectionDragCompleted(Point dragPoint)
         {
             VoiceDebugLog.Write("drag completed; enabled=" + voiceSettings.Enabled);
             if (!voiceSettings.Enabled)
@@ -1187,7 +1187,7 @@ namespace CursorImeIndicator
                 return;
             }
 
-            string selectedText = ClipboardSelectionReader.TryCopySelectionText();
+            string selectedText = ClipboardSelectionReader.TryCopySelectionText(dragPoint);
             VoiceDebugLog.Write("copied length=" + (selectedText == null ? -1 : selectedText.Length));
             SpeakSanitizedText(selectedText, false);
         }
@@ -6793,18 +6793,26 @@ namespace CursorImeIndicator
         private static bool pendingHadData;
         private static uint pendingSequence;
 
-        public static string TryCopySelectionText()
+        public static string TryCopySelectionText(Point dragPoint)
         {
-            // Ask the focused control for its selection first. In a terminal Ctrl+C is an
-            // interrupt rather than a copy - it lands on the prompt as ^C and would kill a
-            // running command - and any keypress at all is reason enough for a terminal to
-            // drop the selection. When the control can simply hand the text over, nothing
-            // needs to be pressed.
-            string selected = ReadSelectionViaAutomation(AutomationTimeoutMs);
-            if (selected != null)
+            // Everything hinges on what sits under the drag. Keyboard focus is no guide:
+            // drawing on a canvas never moves it, so a drag in an image editor used to be
+            // judged against whatever text box happened to hold focus somewhere else.
+            AutomationProbe probe = ProbeDragPoint(AutomationTimeoutMs, dragPoint);
+
+            if (probe.Selection != null)
             {
-                VoiceDebugLog.Write("selection read via UI Automation (" + selected.Length + " chars)");
-                return selected;
+                VoiceDebugLog.Write("selection read via UI Automation (" + probe.Selection.Length + " chars)");
+                return probe.Selection;
+            }
+
+            if (probe.Decided && !probe.IsText)
+            {
+                // A drawing canvas, a toolbar, an image. Pressing Ctrl+C here copies a picture
+                // at best; at worst SendWait blocks the UI thread while the app is busy, which
+                // is what made drawing in PicPick stutter.
+                VoiceDebugLog.Write("skip: drag was not over text (" + probe.Describe() + ")");
+                return "";
             }
 
             CancelPendingRestore();
@@ -6836,6 +6844,21 @@ namespace CursorImeIndicator
 
         private const int AutomationTimeoutMs = 400;
 
+        // What the automation layer managed to work out about the drag target.
+        internal sealed class AutomationProbe
+        {
+            public bool Decided;      // the query finished rather than timing out
+            public bool IsText;       // the element looks like a text surface
+            public string Selection;  // non-null when the text could be read outright
+            public string ClassName = "";
+            public string ControlType = "";
+
+            public string Describe()
+            {
+                return ControlType + " '" + ClassName + "'";
+            }
+        }
+
         // Set by ReadSelectionCore even when it declines, so the fallback knows what it is
         // about to type into. Chromium reports an element's DOM class list here, which is
         // how an xterm.js terminal inside Cursor or VS Code is recognised.
@@ -6843,54 +6866,140 @@ namespace CursorImeIndicator
 
         // Runs on its own STA thread: a misbehaving automation provider can block for a long
         // time, and this is called from the UI thread where that would freeze the indicator.
-        // A timeout just means falling back to the clipboard, which is the old behaviour.
-        private static string ReadSelectionViaAutomation(int timeoutMs)
+        // A timeout leaves the probe undecided, which falls back to the clipboard as before.
+        private static AutomationProbe ProbeDragPoint(int timeoutMs, Point point)
         {
-            string result = null;
+            AutomationProbe probe = new AutomationProbe();
             try
             {
-                Thread worker = new Thread(delegate() { result = ReadSelectionCore(); });
+                Thread worker = new Thread(delegate() { ProbeCore(probe, point); });
                 worker.IsBackground = true;
                 worker.SetApartmentState(ApartmentState.STA);
                 worker.Start();
                 if (!worker.Join(timeoutMs))
                 {
                     VoiceDebugLog.Write("UI Automation timed out; using clipboard");
-                    return null;
+                    probe.Decided = false;
+                    probe.Selection = null;
                 }
             }
             catch
             {
-                return null;
+                probe.Decided = false;
             }
 
-            return result;
+            return probe;
         }
 
-        private static string ReadSelectionCore()
+        // Chromium-based apps (browsers, Electron editors) and terminals are text hosts even
+        // when the element under the cursor is an anonymous Group.
+        private static bool WindowHostsText(Point point)
         {
             try
             {
-                System.Windows.Automation.AutomationElement focused =
-                    System.Windows.Automation.AutomationElement.FocusedElement;
-                if (focused == null)
+                IntPtr window = NativeMethods.WindowFromPoint(new NativeMethods.PointStruct(point.X, point.Y));
+                if (window == IntPtr.Zero)
+                    return false;
+
+                IntPtr root = NativeMethods.GetAncestor(window, NativeMethods.GA_ROOT);
+                if (root == IntPtr.Zero)
+                    root = window;
+
+                StringBuilder className = new StringBuilder(256);
+                if (NativeMethods.GetClassName(root, className, className.Capacity) == 0)
+                    return false;
+
+                string name = className.ToString();
+                return name == "Chrome_WidgetWin_1"
+                    || name == "ConsoleWindowClass"
+                    || name == "PseudoConsoleWindow"
+                    || name == "MozillaWindowClass"
+                    || name.IndexOf("CASCADIA", StringComparison.OrdinalIgnoreCase) >= 0;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        // Text surfaces answer to TextPattern, or at least call themselves text. Chromium
+        // reports a Text element under the cursor for page text; an ImageEn canvas does not.
+        private static bool LooksLikeText(System.Windows.Automation.AutomationElement element)
+        {
+            if (element == null)
+                return false;
+
+            object pattern;
+            if (element.TryGetCurrentPattern(
+                    System.Windows.Automation.TextPattern.Pattern, out pattern))
+                return true;
+
+            System.Windows.Automation.ControlType type = element.Current.ControlType;
+            return type == System.Windows.Automation.ControlType.Text
+                || type == System.Windows.Automation.ControlType.Document
+                || type == System.Windows.Automation.ControlType.Edit;
+        }
+
+        private static void ProbeCore(AutomationProbe probe, Point point)
+        {
+            try
+            {
+                System.Windows.Automation.AutomationElement element =
+                    System.Windows.Automation.AutomationElement.FromPoint(
+                        new System.Windows.Point(point.X, point.Y));
+                if (element == null)
                 {
+                    probe.Decided = true;
                     lastFocusedClass = "";
-                    VoiceDebugLog.Write("uia: no focused element");
-                    return null;
+                    VoiceDebugLog.Write("uia: nothing under the drag point");
+                    return;
                 }
 
                 string who = "?";
-                try { who = focused.Current.ClassName; }
+                try { who = element.Current.ClassName; }
                 catch { }
                 lastFocusedClass = who ?? "";
+                probe.ClassName = lastFocusedClass;
+                try { probe.ControlType = element.Current.ControlType.ProgrammaticName.Replace("ControlType.", ""); }
+                catch { }
+
+                // An element inside a page is often a bare Group and the nearest Text or
+                // Document ancestor can be several levels up, so climb a good way before
+                // concluding there is no text here.
+                bool isText = LooksLikeText(element);
+                System.Windows.Automation.AutomationElement climb = element;
+                for (int i = 0; i < 6 && !isText; i++)
+                {
+                    try
+                    {
+                        climb = System.Windows.Automation.TreeWalker.ControlViewWalker.GetParent(climb);
+                    }
+                    catch
+                    {
+                        climb = null;
+                    }
+
+                    if (climb == null)
+                        break;
+                    isText = LooksLikeText(climb);
+                }
+
+                // Failing that, the window itself is evidence. A browser, an Electron app or a
+                // terminal hosts text by definition; an image editor's canvas does not, and
+                // that is the case worth refusing.
+                if (!isText && WindowHostsText(point))
+                    isText = true;
+
+                probe.IsText = isText;
+                probe.Decided = true;
 
                 object pattern;
-                if (!focused.TryGetCurrentPattern(
+                if (!element.TryGetCurrentPattern(
                         System.Windows.Automation.TextPattern.Pattern, out pattern))
                 {
-                    VoiceDebugLog.Write("uia: '" + who + "' has no TextPattern");
-                    return null;
+                    VoiceDebugLog.Write("uia: '" + who + "' (" + probe.ControlType
+                        + ") no TextPattern, isText=" + isText);
+                    return;
                 }
 
                 System.Windows.Automation.TextPattern textPattern =
@@ -6898,14 +7007,14 @@ namespace CursorImeIndicator
                 if (textPattern == null)
                 {
                     VoiceDebugLog.Write("uia: '" + who + "' TextPattern cast failed");
-                    return null;
+                    return;
                 }
 
                 System.Windows.Automation.Text.TextPatternRange[] ranges = textPattern.GetSelection();
                 if (ranges == null || ranges.Length == 0)
                 {
                     VoiceDebugLog.Write("uia: '" + who + "' reports no selection range");
-                    return null;
+                    return;
                 }
 
                 StringBuilder builder = new StringBuilder();
@@ -6922,15 +7031,15 @@ namespace CursorImeIndicator
                 if (selected.Trim().Length == 0)
                 {
                     VoiceDebugLog.Write("uia: '" + who + "' selection is empty");
-                    return null;
+                    return;
                 }
 
-                return selected;
+                probe.Selection = selected;
             }
             catch (Exception ex)
             {
+                probe.Decided = false;
                 VoiceDebugLog.Write("uia failed: " + ex.Message);
-                return null;
             }
         }
 
@@ -9295,7 +9404,7 @@ namespace CursorImeIndicator
     {
         private const int DragThreshold = 12;
         private readonly SynchronizationContext context;
-        private readonly Action onDragCompleted;
+        private readonly Action<Point> onDragCompleted;
         private NativeMethods.HookProc hookProc;
         private IntPtr hookHandle = IntPtr.Zero;
         private Thread hookThread;
@@ -9304,7 +9413,7 @@ namespace CursorImeIndicator
         private Point mouseDownPoint;
         private DateTime mouseDownUtc = DateTime.MinValue;
 
-        public SelectionDragWatcher(SynchronizationContext context, Action onDragCompleted)
+        public SelectionDragWatcher(SynchronizationContext context, Action<Point> onDragCompleted)
         {
             this.context = context;
             this.onDragCompleted = onDragCompleted;
@@ -9385,14 +9494,21 @@ namespace CursorImeIndicator
                     double distance = Math.Sqrt(Math.Pow(upPoint.X - mouseDownPoint.X, 2) + Math.Pow(upPoint.Y - mouseDownPoint.Y, 2));
                     double elapsed = (DateTime.UtcNow - mouseDownUtc).TotalMilliseconds;
                     if (distance >= DragThreshold && elapsed >= 80 && elapsed <= 12000)
-                        RaiseDragCompleted((int)distance, (int)elapsed);
+                    {
+                        // The midpoint sits inside whatever was dragged across, which is the
+                        // only reliable clue about what the user actually selected.
+                        Point middle = new Point(
+                            (mouseDownPoint.X + upPoint.X) / 2,
+                            (mouseDownPoint.Y + upPoint.Y) / 2);
+                        RaiseDragCompleted((int)distance, (int)elapsed, middle);
+                    }
                 }
             }
 
             return NativeMethods.CallNextHookEx(hookHandle, nCode, wParam, lParam);
         }
 
-        private void RaiseDragCompleted(int distance, int elapsed)
+        private void RaiseDragCompleted(int distance, int elapsed, Point point)
         {
             if (onDragCompleted == null)
                 return;
@@ -9401,13 +9517,14 @@ namespace CursorImeIndicator
             {
                 context.Post(delegate
                 {
-                    VoiceDebugLog.Write("drag detected; dist=" + distance + " elapsed=" + elapsed);
-                    onDragCompleted();
+                    VoiceDebugLog.Write("drag detected; dist=" + distance + " elapsed=" + elapsed
+                        + " at=" + point.X + "," + point.Y);
+                    onDragCompleted(point);
                 }, null);
             }
             else
             {
-                onDragCompleted();
+                onDragCompleted(point);
             }
         }
     }
@@ -9962,6 +10079,27 @@ namespace CursorImeIndicator
 
         [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
         public static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct PointStruct
+        {
+            public int X;
+            public int Y;
+
+            public PointStruct(int x, int y)
+            {
+                X = x;
+                Y = y;
+            }
+        }
+
+        public const uint GA_ROOT = 2;
+
+        [DllImport("user32.dll")]
+        public static extern IntPtr WindowFromPoint(PointStruct point);
+
+        [DllImport("user32.dll")]
+        public static extern IntPtr GetAncestor(IntPtr hWnd, uint flags);
 
         [DllImport("user32.dll")]
         public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
