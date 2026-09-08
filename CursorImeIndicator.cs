@@ -6888,6 +6888,29 @@ namespace CursorImeIndicator
                 return "";
             }
 
+            // Which key is safe depends on what the drag landed in, so it is worked out
+            // from that window rather than from whatever holds the foreground. A wrong guess
+            // here either interrupts the user's shell or wipes the selection they just made,
+            // so when the answer is not certain nothing is pressed at all.
+            DragHost host = ClassifyDragHost(dragPoint);
+            string elementClass = probe.TimedOut ? "" : (probe.ClassName ?? "");
+            string keystroke = CopyKeystrokeFor(host, elementClass);
+
+            if (keystroke == null)
+            {
+                VoiceDebugLog.Write("skip: no copy key is safe over " + host
+                    + " (element '" + elementClass + "')");
+                return "";
+            }
+
+            // SendKeys types into the foreground window. If that is not where the drag
+            // happened, the keystroke would land in an unrelated app.
+            if (!ForegroundMatchesDrag(dragPoint))
+            {
+                VoiceDebugLog.Write("skip: the dragged window is not in front");
+                return "";
+            }
+
             CancelPendingRestore();
 
             // Clipboard.GetDataObject() hands back a live proxy whose data dies
@@ -6900,9 +6923,8 @@ namespace CursorImeIndicator
             try
             {
                 TryClearClipboard();
-                string keystroke = CopyKeystrokeForForeground();
-                VoiceDebugLog.Write("clipboard fallback: focus='" + lastFocusedClass
-                    + "' key=" + keystroke);
+                VoiceDebugLog.Write("clipboard fallback: host=" + host + " element='"
+                    + elementClass + "' key=" + keystroke);
                 SendKeys.SendWait(keystroke);
                 copied = ReadTextWithRetry() ?? "";
             }
@@ -6921,6 +6943,7 @@ namespace CursorImeIndicator
         internal sealed class AutomationProbe
         {
             public bool Decided;      // the query finished rather than timing out
+            public bool TimedOut;     // the worker was abandoned; its fields cannot be trusted
             public bool IsText;       // the element looks like a text surface
             public string Selection;  // non-null when the text could be read outright
             public string ClassName = "";
@@ -6932,11 +6955,6 @@ namespace CursorImeIndicator
                 return ControlType + " '" + ClassName + "'";
             }
         }
-
-        // Set by ReadSelectionCore even when it declines, so the fallback knows what it is
-        // about to type into. Chromium reports an element's DOM class list here, which is
-        // how an xterm.js terminal inside Cursor or VS Code is recognised.
-        private static string lastFocusedClass = "";
 
         // Runs on its own STA thread: a misbehaving automation provider can block for a long
         // time, and this is called from the UI thread where that would freeze the indicator.
@@ -6957,6 +6975,10 @@ namespace CursorImeIndicator
                 worker.Start();
                 if (!worker.Join(timeoutMs))
                 {
+                    // Join returning false does not stop the worker, so anything it writes
+                    // from here on races this thread and must not be read.
+                    probe.TimedOut = true;
+
                     // An app too busy to answer automation is exactly the app that will hold
                     // SendKeys.SendWait for seconds. Unless the window is a known text host,
                     // treat the silence as "not text" rather than as permission to press keys.
@@ -7043,7 +7065,6 @@ namespace CursorImeIndicator
                 if (element == null)
                 {
                     probe.Decided = true;
-                    lastFocusedClass = "";
                     VoiceDebugLog.Write("uia: nothing under the drag point");
                     return;
                 }
@@ -7051,8 +7072,9 @@ namespace CursorImeIndicator
                 string who = "?";
                 try { who = element.Current.ClassName; }
                 catch { }
-                lastFocusedClass = who ?? "";
-                probe.ClassName = lastFocusedClass;
+                // Chromium reports an element's DOM class list here, which is how an
+                // xterm.js terminal inside Cursor or VS Code is told apart from an editor.
+                probe.ClassName = who ?? "";
                 try { probe.ControlType = element.Current.ControlType.ProgrammaticName.Replace("ControlType.", ""); }
                 catch { }
 
@@ -7136,38 +7158,173 @@ namespace CursorImeIndicator
             }
         }
 
-        // Ctrl+C means "interrupt" wherever a shell is listening, so the fallback picks a
-        // copy binding that does not. Two kinds of terminal have to be told apart:
-        //   - a real console window (conhost, Windows Terminal) takes Ctrl+Insert
-        //   - xterm.js inside Cursor / VS Code takes Ctrl+Shift+C
-        // Anything else is an ordinary text control where Ctrl+C is just a copy.
-        private static string CopyKeystrokeForForeground()
+        // What the drag landed in, worked out from window handles alone. This answers
+        // immediately and cannot be made wrong by an app that is too busy to talk to
+        // automation, which is exactly when the old foreground-based guess went astray.
+        internal enum DragHost
         {
-            string focusedClass = lastFocusedClass ?? "";
-            if (focusedClass.IndexOf("xterm", StringComparison.OrdinalIgnoreCase) >= 0)
-                return "^+c";
+            Unknown,            // nothing identifiable under the cursor
+            Console,            // conhost or Windows Terminal - Ctrl+C interrupts the shell
+            TerminalCapable,    // an editor that may be showing a terminal panel
+            Ordinary            // a plain window where Ctrl+C is only a copy
+        }
 
+        private static readonly string[] ConsoleProcesses =
+        {
+            "windowsterminal", "openconsole", "conhost", "cmd", "powershell", "pwsh",
+            "wt", "mintty", "alacritty", "wezterm-gui", "wezterm"
+        };
+
+        // Editors that embed xterm.js. A drag inside one of these may be over a shell even
+        // though the window class says only "Chromium".
+        private static readonly string[] TerminalCapableProcesses =
+        {
+            "cursor", "code", "code - insiders", "vscodium", "codium", "windsurf",
+            "trae", "hyper", "tabby", "positron"
+        };
+
+        private static DragHost ClassifyDragHost(Point point)
+        {
             try
             {
-                IntPtr foreground = NativeMethods.GetForegroundWindow();
-                if (foreground != IntPtr.Zero)
-                {
-                    StringBuilder className = new StringBuilder(256);
-                    if (NativeMethods.GetClassName(foreground, className, className.Capacity) != 0)
-                    {
-                        string name = className.ToString();
-                        if (name == "ConsoleWindowClass"
-                            || name == "PseudoConsoleWindow"
-                            || name.IndexOf("CASCADIA", StringComparison.OrdinalIgnoreCase) >= 0)
-                            return "^{INSERT}";
-                    }
-                }
+                IntPtr window = NativeMethods.WindowFromPoint(
+                    new NativeMethods.PointStruct(point.X, point.Y));
+                if (window == IntPtr.Zero)
+                    return DragHost.Unknown;
+
+                IntPtr root = NativeMethods.GetAncestor(window, NativeMethods.GA_ROOT);
+                if (root == IntPtr.Zero)
+                    root = window;
+
+                StringBuilder className = new StringBuilder(256);
+                string name = NativeMethods.GetClassName(root, className, className.Capacity) != 0
+                    ? className.ToString()
+                    : "";
+
+                if (name == "ConsoleWindowClass"
+                    || name == "PseudoConsoleWindow"
+                    || name.IndexOf("CASCADIA", StringComparison.OrdinalIgnoreCase) >= 0)
+                    return DragHost.Console;
+
+                string process = ProcessNameOf(root);
+                if (Matches(ConsoleProcesses, process))
+                    return DragHost.Console;
+                if (Matches(TerminalCapableProcesses, process))
+                    return DragHost.TerminalCapable;
+
+                return name.Length == 0 ? DragHost.Unknown : DragHost.Ordinary;
             }
             catch
             {
+                return DragHost.Unknown;
+            }
+        }
+
+        private static bool Matches(string[] names, string candidate)
+        {
+            if (candidate == null || candidate.Length == 0)
+                return false;
+
+            for (int i = 0; i < names.Length; i++)
+            {
+                if (string.Equals(names[i], candidate, StringComparison.OrdinalIgnoreCase))
+                    return true;
             }
 
+            return false;
+        }
+
+        private static string ProcessNameOf(IntPtr window)
+        {
+            try
+            {
+                uint processId;
+                NativeMethods.GetWindowThreadProcessId(window, out processId);
+                if (processId == 0)
+                    return "";
+
+                using (Process owner = Process.GetProcessById((int)processId))
+                    return owner.ProcessName;
+            }
+            catch
+            {
+                return "";
+            }
+        }
+
+        // Chromium reports an element's DOM class list as its automation class name. A Win32
+        // class instead means the query never reached the page, so nothing is known about
+        // what the drag was actually over.
+        private static bool ElementClassCameFromPage(string name)
+        {
+            if (name == null || name.Length == 0)
+                return false;
+            if (name.StartsWith("Chrome_", StringComparison.OrdinalIgnoreCase))
+                return false;
+            if (name.IndexOf("CASCADIA", StringComparison.OrdinalIgnoreCase) >= 0)
+                return false;
+
+            return true;
+        }
+
+        // Ctrl+C means "interrupt" wherever a shell is listening, so a terminal never gets it.
+        // Returns null when no key can be pressed safely; losing one reading is a great deal
+        // cheaper than killing a running command.
+        private static string CopyKeystrokeFor(DragHost host, string elementClass)
+        {
+            string name = elementClass ?? "";
+
+            // xterm.js names itself in the DOM, and its copy binding is Ctrl+Shift+C.
+            if (name.IndexOf("xterm", StringComparison.OrdinalIgnoreCase) >= 0)
+                return "^+c";
+
+            if (host == DragHost.Console)
+                return "^{INSERT}";
+
+            if (host == DragHost.TerminalCapable)
+            {
+                // Inside Cursor or VS Code only the DOM class separates the terminal panel
+                // from an editor. Without it the drag may well be over a shell.
+                if (!ElementClassCameFromPage(name))
+                    return null;
+
+                return "^c";
+            }
+
+            if (host == DragHost.Unknown)
+                return null;
+
             return "^c";
+        }
+
+        // SendKeys goes to whatever is in front, so the drag window has to be that window.
+        private static bool ForegroundMatchesDrag(Point point)
+        {
+            try
+            {
+                IntPtr window = NativeMethods.WindowFromPoint(
+                    new NativeMethods.PointStruct(point.X, point.Y));
+                if (window == IntPtr.Zero)
+                    return false;
+
+                IntPtr dragRoot = NativeMethods.GetAncestor(window, NativeMethods.GA_ROOT);
+                if (dragRoot == IntPtr.Zero)
+                    dragRoot = window;
+
+                IntPtr foreground = NativeMethods.GetForegroundWindow();
+                if (foreground == IntPtr.Zero)
+                    return false;
+
+                IntPtr foregroundRoot = NativeMethods.GetAncestor(foreground, NativeMethods.GA_ROOT);
+                if (foregroundRoot == IntPtr.Zero)
+                    foregroundRoot = foreground;
+
+                return dragRoot == foregroundRoot;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         private static void ScheduleRestore(IDataObject previousData, bool hadPreviousData, uint sequence)
