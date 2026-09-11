@@ -381,6 +381,10 @@ namespace CursorImeIndicator
         public const string LicenseOfflineValid = "\uC624\uD504\uB77C\uC778 \uC0AC\uC6A9 \uAC00\uB2A5";
         public const string LicenseInvalid = "\uD65C\uC131\uD654 \uD544\uC694";
         public const string ReadStateTitle = "\uD654\uBA74 \uC77D\uAE30";
+        public const string SecondsSuffix = "\uCD08";
+        public const string ScreenReadIntervalMenu = "\uC77D\uAE30 \uAC04\uACA9";
+        public const string AnswerDisplayMenu = "\uB2F5\uBCC0 \uD45C\uC2DC \uC2DC\uAC04";
+        public const string PeriodicModelMenu = "\uC0C1\uC2DC \uC77D\uAE30 \uBAA8\uB378";
         public const string ReadStateNeedsRegion = "\uC601\uC5ED \uC124\uC815 \uD544\uC694";
         public const string ReadStateWaitingForChange = "\uBCC0\uD654 \uB300\uAE30";
         public const string ReadStateAnalysing = "\uBD84\uC11D \uC911";
@@ -553,6 +557,9 @@ namespace CursorImeIndicator
             bubbleGroup.DropDownItems.Add(new ToolStripMenuItem(TextResources.StopAndHideBubble, null,
                 delegate { OnBubbleStopHotkeyPressed(); }));
             bubbleGroup.DropDownItems.Add(new ToolStripMenuItem(TextResources.CompanionPromptTitle, null, OnEditCompanionPrompt));
+            bubbleGroup.DropDownItems.Add(CreateScreenReadIntervalMenu());
+            bubbleGroup.DropDownItems.Add(CreateAnswerDisplayMenu());
+            bubbleGroup.DropDownItems.Add(CreatePeriodicModelMenu());
             bubbleGroup.DropDownItems.Add(CreateCompanionFontMenu());
             bubbleGroup.DropDownItems.Add(CreateBubbleFontMenu());
             bubbleGroup.DropDownItems.Add(CreateBubbleColorMenu());
@@ -772,6 +779,114 @@ namespace CursorImeIndicator
                 };
                 menu.DropDownItems.Add(item);
             }
+            return menu;
+        }
+
+        // Presets plus a read-only spinner. Every allowed step is reachable and
+        // there is no text box to type an out-of-range value into, which is what the
+        // requirement for a non-editable picker actually asks for. A ComboBox would
+        // read more naturally but its dropdown is a separate top-level window, and
+        // opening one inside a tray menu tends to dismiss the menu underneath it.
+        private ToolStripMenuItem CreateSecondsMenu(string title, int minimum, int maximum,
+            int[] presets, Func<int> read, Action<int> write)
+        {
+            ToolStripMenuItem menu = new ToolStripMenuItem();
+            NumericUpDown numeric = new NumericUpDown();
+            numeric.Minimum = minimum;
+            numeric.Maximum = maximum;
+            numeric.Increment = 5;
+            numeric.ReadOnly = true;
+            numeric.Value = read();
+            numeric.Width = 80;
+            List<ToolStripMenuItem> items = new List<ToolStripMenuItem>();
+            Action refresh = delegate
+            {
+                menu.Text = title + " (" + read().ToString(CultureInfo.InvariantCulture) +
+                    TextResources.SecondsSuffix + ")";
+                foreach (ToolStripMenuItem item in items)
+                    item.Checked = (int)item.Tag == read();
+            };
+            foreach (int value in presets)
+            {
+                ToolStripMenuItem item = new ToolStripMenuItem(
+                    value.ToString(CultureInfo.InvariantCulture) + TextResources.SecondsSuffix);
+                item.Tag = value;
+                item.Click += delegate(object sender, EventArgs e)
+                {
+                    numeric.Value = (int)((ToolStripMenuItem)sender).Tag;
+                };
+                items.Add(item);
+                menu.DropDownItems.Add(item);
+            }
+            numeric.ValueChanged += delegate
+            {
+                write((int)numeric.Value);
+                settings.Save();
+                refresh();
+            };
+            menu.DropDownItems.Add(new ToolStripSeparator());
+            menu.DropDownItems.Add(new ToolStripControlHost(numeric));
+            refresh();
+            return menu;
+        }
+
+        private ToolStripMenuItem CreateScreenReadIntervalMenu()
+        {
+            return CreateSecondsMenu(TextResources.ScreenReadIntervalMenu,
+                AppSettings.MinScreenReadIntervalSeconds, AppSettings.MaxScreenReadIntervalSeconds,
+                new int[] { 20, 30, 45, 60, 90, 120 },
+                delegate { return settings.ScreenReadIntervalSeconds; },
+                delegate(int value)
+                {
+                    settings.ScreenReadIntervalSeconds = AppSettings.ClampScreenReadIntervalSeconds(value);
+                    // The scheduler holds its own copy. Writing only the setting would
+                    // take effect on the next launch and nowhere before it.
+                    screenReadScheduler.SetIntervalSeconds(settings.ScreenReadIntervalSeconds);
+                });
+        }
+
+        private ToolStripMenuItem CreateAnswerDisplayMenu()
+        {
+            return CreateSecondsMenu(TextResources.AnswerDisplayMenu,
+                AppSettings.MinAnswerDisplaySeconds, AppSettings.MaxAnswerDisplaySeconds,
+                new int[] { 10, 15, 20, 30, 45, 60 },
+                delegate { return settings.AnswerDisplaySeconds; },
+                delegate(int value)
+                {
+                    settings.AnswerDisplaySeconds = AppSettings.ClampAnswerDisplaySeconds(value);
+                });
+        }
+
+        // Only models that can actually see a screen, and only ones small enough to
+        // sit beside whatever else is using the card. Anything larger belongs on the
+        // manual read, not on a timer.
+        private ToolStripMenuItem CreatePeriodicModelMenu()
+        {
+            ToolStripMenuItem menu = new ToolStripMenuItem();
+            List<ToolStripMenuItem> items = new List<ToolStripMenuItem>();
+            Action refresh = delegate
+            {
+                menu.Text = TextResources.PeriodicModelMenu + " (" + settings.PeriodicModel + ")";
+                foreach (ToolStripMenuItem item in items)
+                    item.Checked = string.Equals((string)item.Tag, settings.PeriodicModel,
+                        StringComparison.OrdinalIgnoreCase);
+            };
+            foreach (string name in new string[] { "qwen3.5:4b", "qwen3.5:9b" })
+            {
+                ToolStripMenuItem item = new ToolStripMenuItem(name);
+                item.Tag = name;
+                item.Click += delegate(object sender, EventArgs e)
+                {
+                    settings.PeriodicModel = (string)((ToolStripMenuItem)sender).Tag;
+                    settings.Save();
+                    if (companionChatForm != null && !companionChatForm.IsDisposed)
+                        companionChatForm.SetPeriodicModel(settings.PeriodicModel);
+                    refresh();
+                };
+                items.Add(item);
+                menu.DropDownItems.Add(item);
+            }
+            refresh();
             return menu;
         }
 
