@@ -384,6 +384,8 @@ namespace CursorImeIndicator
         public const string SecondsSuffix = "\uCD08";
         public const string BubbleWaiting = "\uAE30\uB2E4\uB824\uC918";
         public const string CloseBubbleNow = "\uD604\uC7AC \uB9D0\uD48D\uC120 \uB2EB\uAE30";
+        public const string ReadRegionHotkeyGroup = "\uC601\uC5ED \uC77D\uAE30";
+        public const string ReadRegionHotkeyMenu = "\uC601\uC5ED \uC77D\uAE30 \uB2E8\uCD95\uD0A4";
         public const string SetReadRegionMenu = "\uC77D\uC744 \uC601\uC5ED \uC9C0\uC815";
         public const string ClearReadRegionMenu = "\uC601\uC5ED \uC9C0\uC815 \uD574\uC81C";
         public const string RegionPickHint = "\uB4DC\uB798\uADF8\uD574\uC11C \uC77D\uC744 \uC601\uC5ED\uC744 \uC9C0\uC815\uD558\uC138\uC694. Esc: \uCDE8\uC18C";
@@ -426,7 +428,15 @@ namespace CursorImeIndicator
         private const int BubbleStopHotkeyId = 0xB006;
         private const int BubbleVoiceToggleHotkeyId = 0xB007;
         private const int BubbleVoiceStopHotkeyId = 0xB008;
-        private readonly HotkeySettingsForm[] featureHotkeyForms = new HotkeySettingsForm[3];
+        private const int ReadRegionToggleHotkeyId = 0xB009;
+        private const int CloseBubbleHotkeyId = 0xB00A;
+        // Groups of two - a toggle slot and a stop slot - that the hotkey dialog,
+        // the duplicate check and the registration loop all walk together. The count
+        // was written out at each of those places; adding a fifth group is why it is
+        // a constant now.
+        private const int HotkeyGroupCount = 5;
+        private readonly HotkeySettingsForm[] featureHotkeyForms =
+            new HotkeySettingsForm[HotkeyGroupCount - 1];
         private ToolStripMenuItem bubbleVoiceEnabledItem;
         private readonly object dragVoiceOwner = new object();
         private readonly object bubbleVoiceOwner = new object();
@@ -598,6 +608,8 @@ namespace CursorImeIndicator
             bubbleGroup.DropDownItems.Add(bubbleVoiceEnabledItem);
             bubbleGroup.DropDownItems.Add(new ToolStripMenuItem("\uC74C\uC131 \uC77D\uAE30 \uB2E8\uCD95\uD0A4", null,
                 delegate { OnOpenFeatureHotkeySettings(3); }));
+            bubbleGroup.DropDownItems.Add(new ToolStripMenuItem(TextResources.ReadRegionHotkeyMenu, null,
+                delegate { OnOpenFeatureHotkeySettings(4); }));
             drawerImageGroup = imageGroup;
             drawerBubbleGroup = bubbleGroup;
             // Keep checkboxes visible in their own column alongside the state icons.
@@ -1132,11 +1144,14 @@ namespace CursorImeIndicator
             HotkeySettingsForm form = group == 0 ? hotkeySettingsForm : featureHotkeyForms[group - 1];
             if (form == null || form.IsDisposed)
             {
-                string title = (group == 0 ? "\uC74C\uC131" : group == 1 ? "\uC774\uBBF8\uC9C0" : group == 2 ? "\uB9D0\uD48D\uC120" : "\uB2F5\uBCC0 \uC74C\uC131")
+                string title = (group == 0 ? "\uC74C\uC131" : group == 1 ? "\uC774\uBBF8\uC9C0" :
+                    group == 2 ? "\uB9D0\uD48D\uC120" : group == 3 ? "\uB2F5\uBCC0 \uC74C\uC131" :
+                    TextResources.ReadRegionHotkeyGroup)
                     + " - " + TextResources.VoiceHotkeyMenu;
                 form = new HotkeySettingsForm(title,
                     group == 0 ? TextResources.HotkeyStopLabel :
-                        group == 3 ? TextResources.BubbleVoiceOffHotkeyLabel : "\uB044\uAE30",
+                        group == 3 ? TextResources.BubbleVoiceOffHotkeyLabel :
+                        group == 4 ? TextResources.CloseBubbleNow : "\uB044\uAE30",
                     delegate { return GetHotkeyValues(group); },
                     delegate(int tm, int tk, int sm, int sk) { return TrySaveHotkeys(group, tm, tk, sm, sk); });
                 if (group == 0) hotkeySettingsForm = form;
@@ -1163,8 +1178,11 @@ namespace CursorImeIndicator
             if (group == 2)
                 return new int[] { settings.BubbleHotkeyModifiers, settings.BubbleHotkeyKey,
                     settings.BubbleStopHotkeyModifiers, settings.BubbleStopHotkeyKey };
-            return new int[] { settings.BubbleVoiceHotkeyModifiers, settings.BubbleVoiceHotkeyKey,
-                settings.BubbleVoiceStopHotkeyModifiers, settings.BubbleVoiceStopHotkeyKey };
+            if (group == 3)
+                return new int[] { settings.BubbleVoiceHotkeyModifiers, settings.BubbleVoiceHotkeyKey,
+                    settings.BubbleVoiceStopHotkeyModifiers, settings.BubbleVoiceStopHotkeyKey };
+            return new int[] { settings.ReadRegionHotkeyModifiers, settings.ReadRegionHotkeyKey,
+                settings.CloseBubbleHotkeyModifiers, settings.CloseBubbleHotkeyKey };
         }
 
         private void SetHotkeyValues(int group, int[] values)
@@ -1190,12 +1208,19 @@ namespace CursorImeIndicator
                 settings.BubbleStopHotkeyModifiers = values[2];
                 settings.BubbleStopHotkeyKey = values[3];
             }
-            else
+            else if (group == 3)
             {
                 settings.BubbleVoiceHotkeyModifiers = values[0];
                 settings.BubbleVoiceHotkeyKey = values[1];
                 settings.BubbleVoiceStopHotkeyModifiers = values[2];
                 settings.BubbleVoiceStopHotkeyKey = values[3];
+            }
+            else
+            {
+                settings.ReadRegionHotkeyModifiers = values[0];
+                settings.ReadRegionHotkeyKey = values[1];
+                settings.CloseBubbleHotkeyModifiers = values[2];
+                settings.CloseBubbleHotkeyKey = values[3];
             }
         }
 
@@ -1218,7 +1243,8 @@ namespace CursorImeIndicator
             if (group == 0) return stop ? VoiceStopHotkeyId : VoiceToggleHotkeyId;
             if (group == 1) return stop ? ImageStopHotkeyId : ImageToggleHotkeyId;
             if (group == 2) return stop ? BubbleStopHotkeyId : BubbleToggleHotkeyId;
-            return stop ? BubbleVoiceStopHotkeyId : BubbleVoiceToggleHotkeyId;
+            if (group == 3) return stop ? BubbleVoiceStopHotkeyId : BubbleVoiceToggleHotkeyId;
+            return stop ? CloseBubbleHotkeyId : ReadRegionToggleHotkeyId;
         }
 
         private Action GetHotkeyAction(int group, bool stop)
@@ -1230,8 +1256,14 @@ namespace CursorImeIndicator
             if (group == 2)
                 return stop ? (Action)OnBubbleStopHotkeyPressed
                     : delegate { continuousReadItem.Checked = !continuousReadItem.Checked; };
-            return stop ? (Action)OnBubbleVoiceOffHotkeyPressed
-                : delegate { bubbleVoiceEnabledItem.Checked = !bubbleVoiceEnabledItem.Checked; };
+            if (group == 3)
+                return stop ? (Action)OnBubbleVoiceOffHotkeyPressed
+                    : delegate { bubbleVoiceEnabledItem.Checked = !bubbleVoiceEnabledItem.Checked; };
+            // The stop slot here closes the bubble and nothing else. Group 2 already
+            // owns the key that stops reading altogether, and the two are deliberately
+            // different: one hides an answer, the other ends the feature.
+            return stop ? (Action)CloseBubbleOnly
+                : delegate { OnOpenCompanionChat(null, EventArgs.Empty); };
         }
 
         private void OnBubbleVoiceOffHotkeyPressed()
@@ -1293,8 +1325,8 @@ namespace CursorImeIndicator
                     MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return false;
             }
-            int[] all = new int[16];
-            for (int g = 0; g < 4; g++)
+            int[] all = new int[HotkeyGroupCount * 4];
+            for (int g = 0; g < HotkeyGroupCount; g++)
                 Array.Copy(g == group ? candidate : GetHotkeyValues(g), 0, all, g * 4, 4);
             if (HasDuplicateHotkeys(all))
             {
@@ -1334,7 +1366,7 @@ namespace CursorImeIndicator
         {
             bool failed = false;
             HashSet<string> used = new HashSet<string>();
-            for (int group = 0; group < 4; group++)
+            for (int group = 0; group < HotkeyGroupCount; group++)
             {
                 int[] values = GetHotkeyValues(group);
                 for (int i = 0; i < 2; i++)
@@ -13581,6 +13613,10 @@ namespace CursorImeIndicator
         public int BubbleVoiceHotkeyKey = 0;
         public int BubbleVoiceStopHotkeyModifiers = 0;
         public int BubbleVoiceStopHotkeyKey = 0;
+        public int ReadRegionHotkeyModifiers = 0;
+        public int ReadRegionHotkeyKey = 0;
+        public int CloseBubbleHotkeyModifiers = 0;
+        public int CloseBubbleHotkeyKey = 0;
         public int ImageHotkeyModifiers = 0;
         public int ImageHotkeyKey = 0;
         public int ImageStopHotkeyModifiers = 0;
@@ -13726,6 +13762,14 @@ namespace CursorImeIndicator
                         settings.BubbleVoiceStopHotkeyModifiers = hotkeyValue;
                     else if (key.Equals("bubbleVoiceStopHotkeyKey", StringComparison.OrdinalIgnoreCase) && int.TryParse(valueText, out hotkeyValue))
                         settings.BubbleVoiceStopHotkeyKey = hotkeyValue;
+                    else if (key.Equals("readRegionHotkeyModifiers", StringComparison.OrdinalIgnoreCase) && int.TryParse(valueText, out hotkeyValue))
+                        settings.ReadRegionHotkeyModifiers = hotkeyValue;
+                    else if (key.Equals("readRegionHotkeyKey", StringComparison.OrdinalIgnoreCase) && int.TryParse(valueText, out hotkeyValue))
+                        settings.ReadRegionHotkeyKey = hotkeyValue;
+                    else if (key.Equals("closeBubbleHotkeyModifiers", StringComparison.OrdinalIgnoreCase) && int.TryParse(valueText, out hotkeyValue))
+                        settings.CloseBubbleHotkeyModifiers = hotkeyValue;
+                    else if (key.Equals("closeBubbleHotkeyKey", StringComparison.OrdinalIgnoreCase) && int.TryParse(valueText, out hotkeyValue))
+                        settings.CloseBubbleHotkeyKey = hotkeyValue;
                     else if (key.Equals("imageHotkeyModifiers", StringComparison.OrdinalIgnoreCase) && int.TryParse(valueText, out hotkeyValue))
                         settings.ImageHotkeyModifiers = hotkeyValue;
                     else if (key.Equals("imageHotkeyKey", StringComparison.OrdinalIgnoreCase) && int.TryParse(valueText, out hotkeyValue))
@@ -13894,6 +13938,10 @@ namespace CursorImeIndicator
                 lines.Add("bubbleVoiceHotkeyKey=" + BubbleVoiceHotkeyKey);
                 lines.Add("bubbleVoiceStopHotkeyModifiers=" + BubbleVoiceStopHotkeyModifiers);
                 lines.Add("bubbleVoiceStopHotkeyKey=" + BubbleVoiceStopHotkeyKey);
+                lines.Add("readRegionHotkeyModifiers=" + ReadRegionHotkeyModifiers);
+                lines.Add("readRegionHotkeyKey=" + ReadRegionHotkeyKey);
+                lines.Add("closeBubbleHotkeyModifiers=" + CloseBubbleHotkeyModifiers);
+                lines.Add("closeBubbleHotkeyKey=" + CloseBubbleHotkeyKey);
                 lines.Add("imageHotkeyModifiers=" + ImageHotkeyModifiers);
                 lines.Add("imageHotkeyKey=" + ImageHotkeyKey);
                 lines.Add("imageStopHotkeyModifiers=" + ImageStopHotkeyModifiers);
