@@ -13328,8 +13328,293 @@ namespace CursorImeIndicator
         }
     }
 
+    // Decides whether an automatic screen read may run, and why not when it may not.
+    //
+    // The read used to be fired straight from a fixed 20-second timer. Any tick that
+    // landed while a request was still in flight returned early before reaching the
+    // request path, so it touched no lock, wrote no log line and raised no notice -
+    // and with a 180-second deadline against a 20-second tick, eight of them in a row
+    // could vanish in silence. Every reason a read can be skipped now lives in one
+    // place, so the question "why is it not reading?" has exactly one answer and the
+    // drawer can show it.
+    internal sealed class ScreenReadScheduler
+    {
+        internal enum ReadState
+        {
+            Idle,
+            NeedsRegion,
+            WaitingForChange,
+            Analysing,
+            Resting,
+            ResourceLow,
+            StoppedOnError
+        }
+
+        // Deliberately constants and not settings keys. The guard exists to stop a
+        // read starting when the machine has no room for it; a settings key would be
+        // a lever for lowering the bar to get past a block, and one that persisted
+        // across restarts at that.
+        internal const long AllowFreeRamBytes = 6L * 1024L * 1024L * 1024L;
+        internal const long AbortFreeRamBytes = 3L * 1024L * 1024L * 1024L;
+        internal const long AllowFreeCommitBytes = 8L * 1024L * 1024L * 1024L;
+        internal const long AbortFreeCommitBytes = 4L * 1024L * 1024L * 1024L;
+        internal const long AllowFreeGpuBytes = 1536L * 1024L * 1024L;
+        internal const long AbortFreeGpuBytes = 512L * 1024L * 1024L;
+
+        internal const int AbortHoldMilliseconds = 10000;
+        internal const int BlockClearHoldMilliseconds = 60000;
+        internal const int SampleIntervalMilliseconds = 2000;
+        // Three sampling periods. A snapshot older than this means the sampler is
+        // wedged, which is a failed measurement rather than a quiet one.
+        internal const int SnapshotStaleMilliseconds = 6000;
+        internal const int GpuQueryTimeoutMilliseconds = 1500;
+
+        private const string DisplayAdapterClassKey =
+            "SYSTEM\\CurrentControlSet\\Control\\Class\\{4d36e968-e325-11ce-bfc1-08002be10318}";
+
+        internal struct ResourceSnapshot
+        {
+            // False when any gate that applies to this machine could not be read.
+            public bool Measured;
+            // False only when the machine has no NVIDIA adapter at all. A card that
+            // is present but will not answer leaves this true and Measured false.
+            public bool GpuPresent;
+            public long FreeRamBytes;
+            public long FreeCommitBytes;
+            public long FreeGpuBytes;
+            public DateTime TakenUtc;
+        }
+
+        // A measurement that could not be taken is never read as headroom. The single
+        // exception is a machine with no NVIDIA adapter: there is no video memory gate
+        // to apply there, so it is skipped rather than failed. Blocking those machines
+        // outright would disable the feature for every user without an NVIDIA card.
+        internal static bool AllowsStart(ResourceSnapshot snapshot, out string reason)
+        {
+            reason = "";
+            if (!snapshot.Measured) { reason = "measurement failed"; return false; }
+            if (snapshot.FreeRamBytes < AllowFreeRamBytes) { reason = "free ram"; return false; }
+            if (snapshot.FreeCommitBytes < AllowFreeCommitBytes) { reason = "free commit"; return false; }
+            if (snapshot.GpuPresent && snapshot.FreeGpuBytes < AllowFreeGpuBytes)
+            {
+                reason = "free gpu";
+                return false;
+            }
+            return true;
+        }
+
+        internal static bool ForcesAbort(ResourceSnapshot snapshot)
+        {
+            if (!snapshot.Measured) return true;
+            if (snapshot.FreeRamBytes < AbortFreeRamBytes) return true;
+            if (snapshot.FreeCommitBytes < AbortFreeCommitBytes) return true;
+            if (snapshot.GpuPresent && snapshot.FreeGpuBytes < AbortFreeGpuBytes) return true;
+            return false;
+        }
+
+        // A timestamp in the future means the clock moved backwards under us, which
+        // tells us as little as an old one does.
+        internal static bool IsSnapshotStale(ResourceSnapshot snapshot, DateTime nowUtc)
+        {
+            if (snapshot.TakenUtc == DateTime.MinValue) return true;
+            double age = (nowUtc - snapshot.TakenUtc).TotalMilliseconds;
+            return age < 0d || age >= SnapshotStaleMilliseconds;
+        }
+
+        internal static bool TryReadFreeRamBytes(out long bytes)
+        {
+            bytes = 0L;
+            try
+            {
+                NativeMethods.MemoryStatusEx status = new NativeMethods.MemoryStatusEx();
+                status.dwLength = (uint)Marshal.SizeOf(typeof(NativeMethods.MemoryStatusEx));
+                if (!NativeMethods.GlobalMemoryStatusEx(ref status)) return false;
+                if (status.ullAvailPhys > (ulong)long.MaxValue) return false;
+                bytes = (long)status.ullAvailPhys;
+                return true;
+            }
+            catch (Exception) { return false; }
+        }
+
+        internal static bool TryReadFreeCommitBytes(out long bytes)
+        {
+            bytes = 0L;
+            try
+            {
+                NativeMethods.PerformanceInformation info = new NativeMethods.PerformanceInformation();
+                int size = Marshal.SizeOf(typeof(NativeMethods.PerformanceInformation));
+                if (!NativeMethods.GetPerformanceInfo(out info, size)) return false;
+                long limit = info.CommitLimit.ToInt64();
+                long total = info.CommitTotal.ToInt64();
+                long pageSize = info.PageSize.ToInt64();
+                if (limit <= 0L || pageSize <= 0L || total < 0L || total > limit) return false;
+                bytes = (limit - total) * pageSize;
+                return true;
+            }
+            catch (Exception) { return false; }
+        }
+
+        // Reports whether this machine has an NVIDIA display adapter. Returns false
+        // when the registry could not be read, because "we could not tell" has to be
+        // treated as a failure rather than as a confirmed absence - the difference
+        // decides whether the video memory gate is skipped or enforced.
+        internal static bool TryDetectNvidiaAdapter(out bool present)
+        {
+            present = false;
+            try
+            {
+                using (RegistryKey root = Registry.LocalMachine.OpenSubKey(DisplayAdapterClassKey))
+                {
+                    if (root == null) return false;
+                    string[] names = root.GetSubKeyNames();
+                    for (int i = 0; i < names.Length; i++)
+                    {
+                        using (RegistryKey adapter = root.OpenSubKey(names[i]))
+                        {
+                            if (adapter == null) continue;
+                            string description = adapter.GetValue("DriverDesc") as string;
+                            if (description == null) continue;
+                            if (description.IndexOf("NVIDIA", StringComparison.OrdinalIgnoreCase) < 0) continue;
+                            // The memory size value is what marks a real adapter key
+                            // rather than one of the class container subkeys.
+                            if (adapter.GetValue("HardwareInformation.qwMemorySize") == null) continue;
+                            present = true;
+                            return true;
+                        }
+                    }
+                }
+                return true;
+            }
+            catch (Exception) { return false; }
+        }
+
+        internal static bool TryReadFreeGpuBytes(out long bytes)
+        {
+            bytes = 0L;
+            try
+            {
+                ProcessStartInfo start = new ProcessStartInfo();
+                start.FileName = "nvidia-smi.exe";
+                start.Arguments = "--query-gpu=memory.free --format=csv,noheader,nounits";
+                start.UseShellExecute = false;
+                start.CreateNoWindow = true;
+                start.RedirectStandardOutput = true;
+                using (Process probe = Process.Start(start))
+                {
+                    if (probe == null) return false;
+                    // Wait first and read afterwards, which is the opposite of the
+                    // usual order. Reading to the end blocks until the child closes
+                    // the pipe, so doing it first would hand a sick driver the power
+                    // to hang us past the timeout. The answer is a handful of bytes
+                    // and cannot fill the pipe buffer, so nothing deadlocks.
+                    if (!probe.WaitForExit(GpuQueryTimeoutMilliseconds))
+                    {
+                        try { probe.Kill(); }
+                        catch (Exception) { }
+                        return false;
+                    }
+                    if (probe.ExitCode != 0) return false;
+                    return TryParseFreeGpuMegabytes(probe.StandardOutput.ReadToEnd(), out bytes);
+                }
+            }
+            catch (Exception) { return false; }
+        }
+
+        // Several adapters report one line each; the tightest one decides, since a
+        // model has to fit on the card it lands on.
+        internal static bool TryParseFreeGpuMegabytes(string text, out long bytes)
+        {
+            bytes = 0L;
+            if (string.IsNullOrEmpty(text)) return false;
+            string[] lines = text.Split(new char[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+            long lowest = -1L;
+            for (int i = 0; i < lines.Length; i++)
+            {
+                long megabytes;
+                if (!long.TryParse(lines[i].Trim(), NumberStyles.Integer,
+                    CultureInfo.InvariantCulture, out megabytes)) continue;
+                if (megabytes < 0L) continue;
+                if (lowest < 0L || megabytes < lowest) lowest = megabytes;
+            }
+            if (lowest < 0L) return false;
+            bytes = lowest * 1024L * 1024L;
+            return true;
+        }
+
+        internal static ResourceSnapshot TakeSnapshot(DateTime nowUtc)
+        {
+            ResourceSnapshot snapshot = new ResourceSnapshot();
+            snapshot.TakenUtc = nowUtc;
+
+            bool present;
+            bool detected = TryDetectNvidiaAdapter(out present);
+            snapshot.GpuPresent = !detected || present;
+
+            long ram;
+            long commit;
+            bool ok = TryReadFreeRamBytes(out ram) & TryReadFreeCommitBytes(out commit);
+            snapshot.FreeRamBytes = ram;
+            snapshot.FreeCommitBytes = commit;
+            if (!detected) ok = false;
+
+            if (snapshot.GpuPresent)
+            {
+                long gpu;
+                if (TryReadFreeGpuBytes(out gpu)) snapshot.FreeGpuBytes = gpu;
+                else ok = false;
+            }
+
+            snapshot.Measured = ok;
+            return snapshot;
+        }
+    }
+
     internal static class NativeMethods
     {
+        [StructLayout(LayoutKind.Sequential)]
+        public struct MemoryStatusEx
+        {
+            public uint dwLength;
+            public uint dwMemoryLoad;
+            public ulong ullTotalPhys;
+            public ulong ullAvailPhys;
+            public ulong ullTotalPageFile;
+            public ulong ullAvailPageFile;
+            public ulong ullTotalVirtual;
+            public ulong ullAvailVirtual;
+            public ulong ullAvailExtendedVirtual;
+        }
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool GlobalMemoryStatusEx(ref MemoryStatusEx buffer);
+
+        // Commit headroom is what Task Manager calls "Committed". It is a different
+        // number from free physical memory and a machine can run out of one with
+        // plenty of the other, so both are measured.
+        [StructLayout(LayoutKind.Sequential)]
+        public struct PerformanceInformation
+        {
+            public int cb;
+            public IntPtr CommitTotal;
+            public IntPtr CommitLimit;
+            public IntPtr CommitPeak;
+            public IntPtr PhysicalTotal;
+            public IntPtr PhysicalAvailable;
+            public IntPtr SystemCache;
+            public IntPtr KernelTotal;
+            public IntPtr KernelPaged;
+            public IntPtr KernelNonpaged;
+            public IntPtr PageSize;
+            public int HandleCount;
+            public int ProcessCount;
+            public int ThreadCount;
+        }
+
+        [DllImport("psapi.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        public static extern bool GetPerformanceInfo(out PerformanceInformation info, int size);
+
         public const int WS_EX_TRANSPARENT = 0x00000020;
         public const int WS_EX_TOOLWINDOW = 0x00000080;
         public const int WS_EX_LAYERED = 0x00080000;
