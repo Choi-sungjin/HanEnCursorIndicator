@@ -424,6 +424,8 @@ namespace CursorImeIndicator
         private CompanionChatForm companionChatForm;
         private readonly System.Windows.Forms.Timer continuousReadTimer = new System.Windows.Forms.Timer();
         private ToolStripMenuItem continuousReadItem;
+        private ToolStripMenuItem screenReadStateItem;
+        private readonly ScreenReadScheduler screenReadScheduler = new ScreenReadScheduler();
         private readonly HotkeyWindow voiceHotkeyWindow;
         private HotkeySettingsForm hotkeySettingsForm;
 
@@ -532,13 +534,20 @@ namespace CursorImeIndicator
             ToolStripMenuItem bubbleGroup = new ToolStripMenuItem("\uB9D0\uD48D\uC120");
             bubbleGroup.Name = "BubbleGroup";
 
-            continuousReadTimer.Interval = 20000;
-            continuousReadTimer.Tick += delegate { OnOpenCompanionChat(null, EventArgs.Empty); };
+            // One clock, once a second, asking the scheduler what to do. The old
+            // 20-second timer fired the read directly and had no way to answer
+            // "not now" - it just returned, silently, for as long as that lasted.
+            continuousReadTimer.Interval = 1000;
+            continuousReadTimer.Tick += delegate { OnScreenReadTick(); };
             continuousReadItem = new ToolStripMenuItem(TextResources.BubbleUse);
             continuousReadItem.ToolTipText = TextResources.BubbleUseTip;
             continuousReadItem.CheckOnClick = true;
             continuousReadItem.CheckedChanged += delegate { SetContinuousScreenRead(continuousReadItem.Checked); };
             bubbleGroup.DropDownItems.Add(continuousReadItem);
+            screenReadStateItem = new ToolStripMenuItem(
+                ScreenReadScheduler.FormatStateText(ScreenReadScheduler.ReadState.Idle));
+            screenReadStateItem.Enabled = false;
+            bubbleGroup.DropDownItems.Add(screenReadStateItem);
             bubbleGroup.DropDownItems.Add(new ToolStripSeparator());
             bubbleGroup.DropDownItems.Add(new ToolStripMenuItem(TextResources.ScreenReadOnce, null, OnOpenCompanionChat));
             bubbleGroup.DropDownItems.Add(new ToolStripMenuItem(TextResources.StopAndHideBubble, null,
@@ -587,6 +596,9 @@ namespace CursorImeIndicator
             ReplaceTrayIcon(Labels.Korean);
             trayIcon.Visible = true;
             ApplyAllHotkeys();
+            screenReadScheduler.SetIntervalSeconds(20);
+            screenReadScheduler.StartSampling();
+            screenReadScheduler.StartWatchingDriverErrors();
             trayIcon.MouseDoubleClick += OnTrayDoubleClick;
 
             timer = new System.Windows.Forms.Timer();
@@ -1097,8 +1109,10 @@ namespace CursorImeIndicator
 
         private void OnBubbleStopHotkeyPressed()
         {
+            // Setting Checked raises CheckedChanged, which runs the teardown by
+            // itself. Calling it again afterwards ran the whole thing twice.
             if (continuousReadItem.Checked) continuousReadItem.Checked = false;
-            SetContinuousScreenRead(false);
+            else SetContinuousScreenRead(false);
         }
 
         private bool RegisterHotkeyPair(int group, int[] values)
@@ -1414,6 +1428,8 @@ namespace CursorImeIndicator
             ApplyDrawerState(voiceEnabledItem, TextResources.VoiceOnDrag, voiceEnabledItem.Checked);
             ApplyDrawerState(bubbleVoiceEnabledItem, TextResources.DrawerAnswerVoiceToggle,
                 bubbleVoiceEnabledItem.Checked);
+            if (screenReadStateItem != null)
+                screenReadStateItem.Text = ScreenReadScheduler.FormatStateText(screenReadScheduler.State);
         }
 
         private void OnTrayMenuOpening(object sender, System.ComponentModel.CancelEventArgs e)
@@ -2223,6 +2239,7 @@ namespace CursorImeIndicator
                 continuousReadItem.Checked = active;
                 return;
             }
+            screenReadScheduler.SetEnabled(active);
             if (active)
             {
                 continuousReadTimer.Start();
@@ -2232,6 +2249,9 @@ namespace CursorImeIndicator
             {
                 StopBubbleVoice();
                 continuousReadTimer.Stop();
+                // Stopping suppresses the finish events, so the scheduler would
+                // otherwise keep believing a request is still in flight.
+                screenReadScheduler.NoteRequestFinished(false, "");
                 if (companionChatForm != null && !companionChatForm.IsDisposed)
                 {
                     companionChatForm.StopScreenRead();
@@ -2240,14 +2260,54 @@ namespace CursorImeIndicator
             }
         }
 
+        // The read the user asked for. It skips the interval and any wait for the
+        // screen to change, but not the resource gate: waving a hand-fired request
+        // through is how a sixteen gigabyte model ends up loading onto a machine
+        // with no room for it.
         private void OnOpenCompanionChat(object sender, EventArgs e)
+        {
+            string reason;
+            if (!screenReadScheduler.AllowsManualRead(out reason))
+            {
+                VoiceDebugLog.Write("screen read refused; entry=manual reason=" + reason);
+                ShowScreenReadStateBalloon(ScreenReadScheduler.ReadState.ResourceLow);
+                return;
+            }
+            BeginScreenRead("manual");
+        }
+
+        // The one-second clock. It asks rather than reads, so a tick that cannot run
+        // leaves a reason behind instead of returning in silence.
+        private void OnScreenReadTick()
+        {
+            if (screenReadScheduler.ShouldAbortInFlight())
+            {
+                VoiceDebugLog.Write("screen read aborted; reason=resources low");
+                if (companionChatForm != null && !companionChatForm.IsDisposed)
+                    companionChatForm.StopScreenRead();
+                screenReadScheduler.NoteRequestFinished(true, "resources low");
+                ShowScreenReadStateBalloon(ScreenReadScheduler.ReadState.ResourceLow);
+                return;
+            }
+            if (!screenReadScheduler.ShouldStartRead()) return;
+            BeginScreenRead("timer");
+        }
+
+        private void BeginScreenRead(string entry)
         {
             if (companionChatForm == null || companionChatForm.IsDisposed)
             {
                 companionChatForm = new CompanionChatForm();
-                companionChatForm.ScreenReadCompleted += OnBubbleScreenReadCompleted;
+                companionChatForm.ScreenReadCompleted += delegate(string text)
+                {
+                    screenReadScheduler.NoteRequestFinished(false, "");
+                    OnBubbleScreenReadCompleted(text);
+                };
                 companionChatForm.ScreenReadFailed += delegate(string error)
                 {
+                    bool stop = CompanionChatForm.StopsAutomaticReading(error);
+                    screenReadScheduler.NoteRequestFinished(stop, error);
+                    if (stop) VoiceDebugLog.Write("automatic screen reading stopped; waiting for a manual read");
                     trayIcon.ShowBalloonTip(5000, TextResources.ScreenReadTitle, error, ToolTipIcon.Warning);
                 };
             }
@@ -2255,7 +2315,20 @@ namespace CursorImeIndicator
             companionChatForm.SetBubbleFontName(settings.CompanionFontName);
             companionChatForm.SetBubbleFontSize(settings.CompanionFontSize);
             companionChatForm.SetScreenReadPrompt(settings.CompanionPrompt);
-            companionChatForm.ReadScreenToBubble();
+            if (companionChatForm.ReadScreenToBubble())
+            {
+                screenReadScheduler.NoteRequestStarted();
+                return;
+            }
+            // Nothing started, so nothing may be recorded as in flight.
+            VoiceDebugLog.Write("screen read skipped; entry=" + entry + " reason=busy");
+        }
+
+        private void ShowScreenReadStateBalloon(ScreenReadScheduler.ReadState state)
+        {
+            if (trayIcon == null) return;
+            trayIcon.ShowBalloonTip(4000, TextResources.ScreenReadTitle,
+                ScreenReadScheduler.FormatStateText(state), ToolTipIcon.Warning);
         }
 
         private void OnExit(object sender, EventArgs e)
@@ -2359,6 +2432,8 @@ namespace CursorImeIndicator
                 if (drawerOnImage != null) drawerOnImage.Dispose();
                 if (drawerOffImage != null) drawerOffImage.Dispose();
                 continuousReadTimer.Dispose();
+                screenReadScheduler.StopSampling();
+                screenReadScheduler.StopWatchingDriverErrors();
                 if (companionChatForm != null)
                     companionChatForm.Dispose();
                 if (indicatorForm != null)
@@ -2848,9 +2923,11 @@ namespace CursorImeIndicator
             CancelRequest(generation, false);
         }
 
-        internal void ReadScreenToBubble()
+        // Returns false when nothing started, so the caller does not record a
+        // request that never began as being in flight.
+        internal bool ReadScreenToBubble()
         {
-            if (bubbleMode || IsDisposed || busy) return;
+            if (bubbleMode || IsDisposed || busy) return false;
             screenOnlyMode = true;
             Hide();
             // A hidden controller must not acquire focus while creating its callback handle.
@@ -2862,6 +2939,7 @@ namespace CursorImeIndicator
             screenCheck.Checked = true;
             promptBox.Text = screenReadPrompt;
             BeginChat();
+            return true;
         }
 
         internal void OpenNearCursor()
@@ -3464,6 +3542,17 @@ namespace CursorImeIndicator
             if (IsMissingScreenReply(text)) return "MISSING_IMAGE_CLAIM";
             if (violations.IndexOf("LIKELY_ENGLISH", StringComparison.Ordinal) >= 0) return "ENGLISH_PROSE";
             return "NONE";
+        }
+
+        // A timeout or a server error means the machine or the model is in no
+        // state to be asked again on a timer. A rejected answer - too long, in
+        // English, no image claimed - is a bad reply, not a sick system, and must
+        // not stop automatic reading.
+        internal static bool StopsAutomaticReading(string failureMessage)
+        {
+            if (string.IsNullOrEmpty(failureMessage)) return false;
+            return failureMessage == GetScreenFailureMessage("TIMEOUT") ||
+                failureMessage == GetScreenFailureMessage("API_ERROR");
         }
 
         internal static string GetScreenFailureMessage(string failureCode)
@@ -13375,6 +13464,10 @@ namespace CursorImeIndicator
         // wedged, which is a failed measurement rather than a quiet one.
         internal const int SnapshotStaleMilliseconds = 6000;
         internal const int GpuQueryTimeoutMilliseconds = 1500;
+        // The longest screen deadline plus a minute. Past this the finish was
+        // never reported and the flag has to be let go of, or the drawer reads
+        // "analysing" forever and no further read ever starts.
+        internal const int StuckRequestMilliseconds = 240000;
 
         private const string DisplayAdapterClassKey =
             "SYSTEM\\CurrentControlSet\\Control\\Class\\{4d36e968-e325-11ce-bfc1-08002be10318}";
@@ -13560,6 +13653,7 @@ namespace CursorImeIndicator
         private string stopReason = "";
         private int intervalSeconds = 20;
         private DateTime lastRequestEndUtc = DateTime.MinValue;
+        private DateTime requestStartUtc = DateTime.MinValue;
         private DateTime resourceOkSinceUtc = DateTime.MinValue;
         private DateTime abortHoldSinceUtc = DateTime.MinValue;
         private ReadState state = ReadState.Idle;
@@ -13597,6 +13691,7 @@ namespace CursorImeIndicator
             lock (sync)
             {
                 requestInFlight = true;
+                requestStartUtc = NowUtc();
                 abortHoldSinceUtc = DateTime.MinValue;
             }
         }
@@ -13609,6 +13704,7 @@ namespace CursorImeIndicator
             lock (sync)
             {
                 requestInFlight = false;
+                requestStartUtc = DateTime.MinValue;
                 lastRequestEndUtc = NowUtc();
                 abortHoldSinceUtc = DateTime.MinValue;
                 if (!stopAutomaticReading) return;
@@ -13674,7 +13770,18 @@ namespace CursorImeIndicator
                 if (!enabled) { state = ReadState.Idle; return false; }
                 if (stoppedOnError) { state = ReadState.StoppedOnError; return false; }
                 if (resourceBlocked || !healthy) { state = ReadState.ResourceLow; return false; }
-                if (requestInFlight) { state = ReadState.Analysing; return false; }
+                if (requestInFlight)
+                {
+                    if (requestStartUtc == DateTime.MinValue ||
+                        (now - requestStartUtc).TotalMilliseconds < StuckRequestMilliseconds)
+                    {
+                        state = ReadState.Analysing;
+                        return false;
+                    }
+                    requestInFlight = false;
+                    requestStartUtc = DateTime.MinValue;
+                    lastRequestEndUtc = now;
+                }
                 if (lastRequestEndUtc != DateTime.MinValue &&
                     (now - lastRequestEndUtc).TotalSeconds < intervalSeconds)
                 {
@@ -13740,6 +13847,12 @@ namespace CursorImeIndicator
                 }
                 return (now - abortHoldSinceUtc).TotalMilliseconds >= AbortHoldMilliseconds;
             }
+        }
+
+        internal static string FormatStateText(ReadState value)
+        {
+            return string.Format(CultureInfo.InvariantCulture, TextResources.DrawerStateFormat,
+                TextResources.ReadStateTitle, DescribeState(value));
         }
 
         internal static string DescribeState(ReadState value)
