@@ -181,7 +181,7 @@ namespace CursorImeIndicator
         public const string ScreenReadTask = "\uCCA8\uBD80\uB41C \uD654\uBA74\uC744 \uBCF4\uACE0 \uBB34\uC5C7\uC774 \uBCF4\uC774\uB294\uC9C0 \uC124\uBA85\uD574\uC918.";
         public const string ScreenInstructionEcho = "\uB2F5\uBCC0\uC5D0 \uC800\uC7A5 \uC9C0\uCE68\uC774 \uBC18\uBCF5\uB418\uC5B4 \uD45C\uC2DC\uC640 \uC74C\uC131 \uCD9C\uB825\uC744 \uAC74\uB108\uB6F0\uC5C8\uC5B4\uC694.";
         public const string BubbleUse = "\uB9D0\uD48D\uC120 \uC0AC\uC6A9";
-        public const string BubbleUseTip = "\uCF1C\uBA74 \uC989\uC2DC \uD654\uBA74\uC744 \uC77D\uACE0 \uC774\uD6C4 20\uCD08\uB9C8\uB2E4 \uBC18\uBCF5\uD569\uB2C8\uB2E4. \uB044\uBA74 \uC77D\uAE30\uC640 \uB2F5\uBCC0 \uC74C\uC131\uC744 \uC815\uC9C0\uD558\uACE0 \uB9D0\uD48D\uC120\uC744 \uC228\uAE41\uB2C8\uB2E4.";
+        public const string BubbleUseTip = "\uCF1C\uBA74 \uC989\uC2DC \uD654\uBA74\uC744 \uC77D\uACE0, \uC77D\uAE30\uAC00 \uB05D\uB09C \uB4A4 20\uCD08\uB97C \uC26C\uC5C8\uB2E4\uAC00 \uB2E4\uC2DC \uC77D\uC2B5\uB2C8\uB2E4. \uB044\uBA74 \uC77D\uAE30\uC640 \uB2F5\uBCC0 \uC74C\uC131\uC744 \uC815\uC9C0\uD558\uACE0 \uB9D0\uD48D\uC120\uC744 \uC228\uAE41\uB2C8\uB2E4.";
         public const string ScreenReadOnce = "\uC9C0\uAE08 \uD654\uBA74 \uD55C \uBC88 \uC77D\uAE30";
         public const string LocalAiSetupTitle = "\uB85C\uCEEC AI \uC124\uCE58 / \uC810\uAC80";
         public const string LocalAiSetupIntro = "\uD544\uC694\uD55C \uD56D\uBAA9\uB9CC \uC120\uD0DD\uD558\uC138\uC694. \uAE30\uBCF8\uC740 \uBAA8\uB450 \uAC74\uB108\uB6F0\uAE30\uC785\uB2C8\uB2E4.\r\nSupertonic3\uB294 \uC74C\uC131\uC6A9 Python\u00B7\uD328\uD0A4\uC9C0\u00B7\uBAA8\uB378\uC744, Ollama\uB294 \uD654\uBA74 \uC77D\uAE30\uC6A9 qwen3.5:4b\uB97C \uBC1B\uC2B5\uB2C8\uB2E4. \uC778\uD130\uB137\uACFC \uB514\uC2A4\uD06C \uACF5\uAC04\uC774 \uD544\uC694\uD558\uBA70 Ollama \uC124\uCE58 \uD30C\uC77C\uC6A9 4GB \uC678\uC5D0 \uBAA8\uB378 \uACF5\uAC04\uB3C4 \uD544\uC694\uD569\uB2C8\uB2E4.\r\n\uAE30\uC874 \uC124\uCE58\uB294 \uC7AC\uC0AC\uC6A9\uD569\uB2C8\uB2E4. Ollama \uACF5\uC2DD \uC124\uCE58 \uCC3D\uC740 \uC9C1\uC811 \uC9C4\uD589\uD574\uC57C \uD569\uB2C8\uB2E4. \uC74C\uC131\u00B7\uD654\uBA74 \uC77D\uAE30\uB294 \uC790\uB3D9\uC73C\uB85C \uCF1C\uC9C0\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4. \uCDE8\uC18C\uD574\uB3C4 \uAE30\uC874 \uBAA8\uB378\uC740 \uC0AD\uC81C\uD558\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.\r\n";
@@ -380,6 +380,13 @@ namespace CursorImeIndicator
         public const string LicenseValid = "\uD65C\uC131\uD654\uB428";
         public const string LicenseOfflineValid = "\uC624\uD504\uB77C\uC778 \uC0AC\uC6A9 \uAC00\uB2A5";
         public const string LicenseInvalid = "\uD65C\uC131\uD654 \uD544\uC694";
+        public const string ReadStateTitle = "\uD654\uBA74 \uC77D\uAE30";
+        public const string ReadStateNeedsRegion = "\uC601\uC5ED \uC124\uC815 \uD544\uC694";
+        public const string ReadStateWaitingForChange = "\uBCC0\uD654 \uB300\uAE30";
+        public const string ReadStateAnalysing = "\uBD84\uC11D \uC911";
+        public const string ReadStateResting = "\uD734\uC2DD \uC911";
+        public const string ReadStateResourceLow = "\uC790\uC6D0 \uBD80\uC871";
+        public const string ReadStateStoppedOnError = "\uC624\uB958\uB85C \uC815\uC9C0";
     }
 
     internal sealed class IndicatorContext : ApplicationContext
@@ -13539,6 +13546,295 @@ namespace CursorImeIndicator
             if (lowest < 0L) return false;
             bytes = lowest * 1024L * 1024L;
             return true;
+        }
+
+        private readonly object sync = new object();
+        private Func<DateTime> clock;
+        private ResourceSnapshot latest;
+        private System.Threading.Timer sampler;
+        private EventLog systemLog;
+        private bool enabled;
+        private bool requestInFlight;
+        private bool resourceBlocked;
+        private bool stoppedOnError;
+        private string stopReason = "";
+        private int intervalSeconds = 20;
+        private DateTime lastRequestEndUtc = DateTime.MinValue;
+        private DateTime resourceOkSinceUtc = DateTime.MinValue;
+        private DateTime abortHoldSinceUtc = DateTime.MinValue;
+        private ReadState state = ReadState.Idle;
+
+        // Tests drive the state machine with a fake clock so that a sixty-second
+        // recovery can be checked without waiting a minute. Live code leaves this
+        // null and gets the real time.
+        internal Func<DateTime> Clock
+        {
+            get { return clock; }
+            set { clock = value; }
+        }
+
+        private DateTime NowUtc()
+        {
+            Func<DateTime> source = clock;
+            return source == null ? DateTime.UtcNow : source();
+        }
+
+        internal ReadState State { get { lock (sync) { return state; } } }
+        internal string StopReason { get { lock (sync) { return stopReason; } } }
+        internal bool IsStoppedOnError { get { lock (sync) { return stoppedOnError; } } }
+
+        internal void SetEnabled(bool value) { lock (sync) { enabled = value; } }
+
+        internal void SetIntervalSeconds(int value)
+        {
+            lock (sync) { intervalSeconds = value < 1 ? 1 : value; }
+        }
+
+        internal void ApplySnapshot(ResourceSnapshot value) { lock (sync) { latest = value; } }
+
+        internal void NoteRequestStarted()
+        {
+            lock (sync)
+            {
+                requestInFlight = true;
+                abortHoldSinceUtc = DateTime.MinValue;
+            }
+        }
+
+        // The interval is measured from here, not from when the request began, so a
+        // read that took two minutes is followed by a full rest rather than by an
+        // immediate second attempt.
+        internal void NoteRequestFinished(bool stopAutomaticReading, string reason)
+        {
+            lock (sync)
+            {
+                requestInFlight = false;
+                lastRequestEndUtc = NowUtc();
+                abortHoldSinceUtc = DateTime.MinValue;
+                if (!stopAutomaticReading) return;
+                stoppedOnError = true;
+                stopReason = reason == null ? "" : reason;
+            }
+        }
+
+        internal void StopOnError(string reason)
+        {
+            lock (sync)
+            {
+                stoppedOnError = true;
+                stopReason = reason == null ? "" : reason;
+            }
+        }
+
+        internal void ResumeAfterError()
+        {
+            lock (sync)
+            {
+                stoppedOnError = false;
+                stopReason = "";
+            }
+        }
+
+        // Returns true when an automatic read should start now, and always leaves
+        // State saying why it did not. That is the whole point of this type: a read
+        // is never skipped without a reason the drawer can show.
+        internal bool ShouldStartRead()
+        {
+            lock (sync)
+            {
+                DateTime now = NowUtc();
+                ResourceSnapshot current = latest;
+                bool fresh = !IsSnapshotStale(current, now);
+                string reason;
+                bool healthy = fresh && AllowsStart(current, out reason);
+
+                // The block latches only on a measurement that was taken and failed.
+                // A stale or unreadable snapshot still stops a read from starting, but
+                // it does not start the sixty-second recovery clock - otherwise every
+                // launch would lock the feature out for a minute before the first
+                // sample had even arrived.
+                if (fresh)
+                {
+                    if (!healthy)
+                    {
+                        resourceBlocked = true;
+                        resourceOkSinceUtc = DateTime.MinValue;
+                    }
+                    else if (resourceBlocked)
+                    {
+                        if (resourceOkSinceUtc == DateTime.MinValue) resourceOkSinceUtc = now;
+                        if ((now - resourceOkSinceUtc).TotalMilliseconds >= BlockClearHoldMilliseconds)
+                        {
+                            resourceBlocked = false;
+                            resourceOkSinceUtc = DateTime.MinValue;
+                        }
+                    }
+                }
+
+                if (!enabled) { state = ReadState.Idle; return false; }
+                if (stoppedOnError) { state = ReadState.StoppedOnError; return false; }
+                if (resourceBlocked || !healthy) { state = ReadState.ResourceLow; return false; }
+                if (requestInFlight) { state = ReadState.Analysing; return false; }
+                if (lastRequestEndUtc != DateTime.MinValue &&
+                    (now - lastRequestEndUtc).TotalSeconds < intervalSeconds)
+                {
+                    state = ReadState.Resting;
+                    return false;
+                }
+                state = ReadState.Analysing;
+                return true;
+            }
+        }
+
+        // A read the user asked for skips the interval, but not the resource gate.
+        // Waving a hand-fired request through would let it load a sixteen gigabyte
+        // model onto a machine with no room for it, which is the exact thing the
+        // guard exists to prevent. It does clear an error stop, though: asking for a
+        // read by hand is how the user says they want automatic reading back.
+        internal bool AllowsManualRead(out string reason)
+        {
+            lock (sync)
+            {
+                DateTime now = NowUtc();
+                ResourceSnapshot current = latest;
+                if (IsSnapshotStale(current, now))
+                {
+                    reason = "no fresh measurement";
+                    return false;
+                }
+                if (resourceBlocked)
+                {
+                    reason = "resources low";
+                    return false;
+                }
+                if (!AllowsStart(current, out reason)) return false;
+                stoppedOnError = false;
+                stopReason = "";
+                return true;
+            }
+        }
+
+        // Cancelling a request in flight needs the condition to hold, not to blink:
+        // a single bad sample during a long inference is noise, ten seconds of them
+        // is the machine actually running out.
+        internal bool ShouldAbortInFlight()
+        {
+            lock (sync)
+            {
+                if (!requestInFlight)
+                {
+                    abortHoldSinceUtc = DateTime.MinValue;
+                    return false;
+                }
+                DateTime now = NowUtc();
+                ResourceSnapshot current = latest;
+                if (!IsSnapshotStale(current, now) && !ForcesAbort(current))
+                {
+                    abortHoldSinceUtc = DateTime.MinValue;
+                    return false;
+                }
+                if (abortHoldSinceUtc == DateTime.MinValue)
+                {
+                    abortHoldSinceUtc = now;
+                    return false;
+                }
+                return (now - abortHoldSinceUtc).TotalMilliseconds >= AbortHoldMilliseconds;
+            }
+        }
+
+        internal static string DescribeState(ReadState value)
+        {
+            if (value == ReadState.NeedsRegion) return TextResources.ReadStateNeedsRegion;
+            if (value == ReadState.WaitingForChange) return TextResources.ReadStateWaitingForChange;
+            if (value == ReadState.Analysing) return TextResources.ReadStateAnalysing;
+            if (value == ReadState.Resting) return TextResources.ReadStateResting;
+            if (value == ReadState.ResourceLow) return TextResources.ReadStateResourceLow;
+            if (value == ReadState.StoppedOnError) return TextResources.ReadStateStoppedOnError;
+            return TextResources.DrawerStateOff;
+        }
+
+        // Sampling runs on the thread pool and never on the UI thread. When the
+        // graphics driver is sick - the condition this whole guard is here for -
+        // the video memory query is exactly what blocks, and blocking it on the UI
+        // thread would freeze the tray app at the worst possible moment.
+        internal void StartSampling()
+        {
+            lock (sync)
+            {
+                if (sampler != null) return;
+                sampler = new System.Threading.Timer(delegate
+                {
+                    try { ApplySnapshot(TakeSnapshot(NowUtc())); }
+                    catch (Exception) { }
+                }, null, 0, SampleIntervalMilliseconds);
+            }
+        }
+
+        internal void StopSampling()
+        {
+            System.Threading.Timer stopping;
+            lock (sync)
+            {
+                stopping = sampler;
+                sampler = null;
+            }
+            if (stopping != null) stopping.Dispose();
+        }
+
+        // A display driver that has just reset itself is the one signal from outside
+        // the app that means stop asking the GPU for things. Windows writes it to the
+        // System log; subscribing costs nothing while nothing happens. If the log
+        // cannot be read the app loses only this signal - the timeout and server
+        // error stops still apply.
+        internal void StartWatchingDriverErrors()
+        {
+            try
+            {
+                EventLog log = new EventLog("System");
+                log.EntryWritten += OnSystemEntryWritten;
+                log.EnableRaisingEvents = true;
+                lock (sync) { systemLog = log; }
+            }
+            catch (Exception) { }
+        }
+
+        internal void StopWatchingDriverErrors()
+        {
+            EventLog closing;
+            lock (sync)
+            {
+                closing = systemLog;
+                systemLog = null;
+            }
+            if (closing == null) return;
+            try
+            {
+                closing.EnableRaisingEvents = false;
+                closing.EntryWritten -= OnSystemEntryWritten;
+                closing.Dispose();
+            }
+            catch (Exception) { }
+        }
+
+        internal static bool IsDisplayDriverFault(string source, EventLogEntryType entryType)
+        {
+            if (entryType != EventLogEntryType.Error && entryType != EventLogEntryType.Warning) return false;
+            if (string.IsNullOrEmpty(source)) return false;
+            return source.IndexOf("nvlddmkm", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                source.IndexOf("Display", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                source.IndexOf("amdkmdag", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                source.IndexOf("igfx", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private void OnSystemEntryWritten(object sender, EntryWrittenEventArgs e)
+        {
+            try
+            {
+                if (e == null || e.Entry == null) return;
+                if (!IsDisplayDriverFault(e.Entry.Source, e.Entry.EntryType)) return;
+                StopOnError("driver event: " + e.Entry.Source);
+            }
+            catch (Exception) { }
         }
 
         internal static ResourceSnapshot TakeSnapshot(DateTime nowUtc)
