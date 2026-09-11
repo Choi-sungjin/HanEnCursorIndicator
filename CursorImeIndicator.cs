@@ -382,6 +382,8 @@ namespace CursorImeIndicator
         public const string LicenseInvalid = "\uD65C\uC131\uD654 \uD544\uC694";
         public const string ReadStateTitle = "\uD654\uBA74 \uC77D\uAE30";
         public const string SecondsSuffix = "\uCD08";
+        public const string BubbleWaiting = "\uAE30\uB2E4\uB824\uC918";
+        public const string CloseBubbleNow = "\uD604\uC7AC \uB9D0\uD48D\uC120 \uB2EB\uAE30";
         public const string ScreenReadIntervalMenu = "\uC77D\uAE30 \uAC04\uACA9";
         public const string AnswerDisplayMenu = "\uB2F5\uBCC0 \uD45C\uC2DC \uC2DC\uAC04";
         public const string PeriodicModelMenu = "\uC0C1\uC2DC \uC77D\uAE30 \uBAA8\uB378";
@@ -543,6 +545,10 @@ namespace CursorImeIndicator
             // "not now" - it just returned, silently, for as long as that lasted.
             continuousReadTimer.Interval = 1000;
             continuousReadTimer.Tick += delegate { OnScreenReadTick(); };
+            // The heartbeat runs whether or not automatic reading is on, because
+            // it also expires the answer bubble - which a read the user asked for
+            // puts up too. Whether a read may start is the scheduler's business.
+            continuousReadTimer.Start();
             continuousReadItem = new ToolStripMenuItem(TextResources.BubbleUse);
             continuousReadItem.ToolTipText = TextResources.BubbleUseTip;
             continuousReadItem.CheckOnClick = true;
@@ -557,6 +563,8 @@ namespace CursorImeIndicator
             bubbleGroup.DropDownItems.Add(new ToolStripMenuItem(TextResources.StopAndHideBubble, null,
                 delegate { OnBubbleStopHotkeyPressed(); }));
             bubbleGroup.DropDownItems.Add(new ToolStripMenuItem(TextResources.CompanionPromptTitle, null, OnEditCompanionPrompt));
+            bubbleGroup.DropDownItems.Add(new ToolStripMenuItem(TextResources.CloseBubbleNow, null,
+                delegate { CloseBubbleOnly(); }));
             bubbleGroup.DropDownItems.Add(CreateScreenReadIntervalMenu());
             bubbleGroup.DropDownItems.Add(CreateAnswerDisplayMenu());
             bubbleGroup.DropDownItems.Add(CreatePeriodicModelMenu());
@@ -604,6 +612,7 @@ namespace CursorImeIndicator
             trayIcon.Visible = true;
             ApplyAllHotkeys();
             screenReadScheduler.SetIntervalSeconds(settings.ScreenReadIntervalSeconds);
+            screenReadScheduler.SetAnswerDisplaySeconds(settings.AnswerDisplaySeconds);
             screenReadScheduler.StartSampling();
             screenReadScheduler.StartWatchingDriverErrors();
             trayIcon.MouseDoubleClick += OnTrayDoubleClick;
@@ -715,8 +724,8 @@ namespace CursorImeIndicator
                 item.Click += delegate(object sender, EventArgs e)
                 {
                     int part = (int)((ToolStripMenuItem)sender).Tag;
-                    bool resume = continuousReadTimer.Enabled;
-                    continuousReadTimer.Stop();
+                    bool resume = screenReadScheduler.IsEnabled;
+                    screenReadScheduler.SetEnabled(false);
                     try
                     {
                         using (ColorDialog picker = new ColorDialog())
@@ -731,7 +740,7 @@ namespace CursorImeIndicator
                             ApplyBubbleColorSettings();
                         }
                     }
-                    finally { if (resume && continuousReadItem.Checked) continuousReadTimer.Start(); }
+                    finally { screenReadScheduler.SetEnabled(resume && continuousReadItem.Checked); }
                 };
                 menu.DropDownItems.Add(item);
             }
@@ -854,6 +863,7 @@ namespace CursorImeIndicator
                 delegate(int value)
                 {
                     settings.AnswerDisplaySeconds = AppSettings.ClampAnswerDisplaySeconds(value);
+                    screenReadScheduler.SetAnswerDisplaySeconds(settings.AnswerDisplaySeconds);
                 });
         }
 
@@ -2325,8 +2335,8 @@ namespace CursorImeIndicator
 
         private void OnEditCompanionPrompt(object sender, EventArgs e)
         {
-            bool resume = continuousReadTimer.Enabled;
-            continuousReadTimer.Stop();
+            bool resume = screenReadScheduler.IsEnabled;
+            screenReadScheduler.SetEnabled(false);
             if (companionChatForm != null && !companionChatForm.IsDisposed)
                 companionChatForm.StopScreenRead();
             try
@@ -2343,7 +2353,7 @@ namespace CursorImeIndicator
             }
             finally
             {
-                if (resume && continuousReadItem.Checked) continuousReadTimer.Start();
+                screenReadScheduler.SetEnabled(resume && continuousReadItem.Checked);
             }
         }
 
@@ -2357,13 +2367,11 @@ namespace CursorImeIndicator
             screenReadScheduler.SetEnabled(active);
             if (active)
             {
-                continuousReadTimer.Start();
                 OnOpenCompanionChat(null, EventArgs.Empty);
             }
             else
             {
                 StopBubbleVoice();
-                continuousReadTimer.Stop();
                 // Stopping suppresses the finish events, so the scheduler would
                 // otherwise keep believing a request is still in flight.
                 screenReadScheduler.NoteRequestFinished(false, "");
@@ -2393,8 +2401,19 @@ namespace CursorImeIndicator
 
         // The one-second clock. It asks rather than reads, so a tick that cannot run
         // leaves a reason behind instead of returning in silence.
+        // Hides the answer only. Inference, automatic reading and the voice
+        // settings are all left exactly as they were - this is not the stop command,
+        // which is a different menu entry and a different hotkey.
+        private void CloseBubbleOnly()
+        {
+            if (companionChatForm != null && !companionChatForm.IsDisposed)
+                companionChatForm.HideResponseBubble();
+            screenReadScheduler.NoteAnswerHidden();
+        }
+
         private void OnScreenReadTick()
         {
+            if (screenReadScheduler.ShouldHideAnswer()) CloseBubbleOnly();
             if (screenReadScheduler.ShouldAbortInFlight())
             {
                 VoiceDebugLog.Write("screen read aborted; reason=resources low");
@@ -2416,6 +2435,9 @@ namespace CursorImeIndicator
                 companionChatForm.ScreenReadCompleted += delegate(string text)
                 {
                     screenReadScheduler.NoteRequestFinished(false, "");
+                    // The answer is on screen by the time this fires, so this is the
+                    // moment the display time is counted from.
+                    screenReadScheduler.NoteAnswerShown();
                     OnBubbleScreenReadCompleted(text);
                 };
                 companionChatForm.ScreenReadFailed += delegate(string error)
@@ -2594,6 +2616,7 @@ namespace CursorImeIndicator
         private readonly System.Windows.Forms.Timer bubbleTimer;
         private CompanionChatForm responseBubble;
         private string bubbleText = "";
+        private bool bubbleIsWaiting;
         private int bubbleFontSize = 10;
         private bool screenOnlyMode;
         private bool screenReadAmbient;
@@ -2822,9 +2845,34 @@ namespace CursorImeIndicator
             base.WndProc(ref message);
         }
 
+        // The placeholder shown while a request is running. It shares the bubble
+        // with real answers but is marked as waiting, so nothing downstream mistakes
+        // it for one - it is never spoken, never enters the history, and never starts
+        // the display timer, because only FinishChat does those and it never calls
+        // this.
+        internal void ShowWaitingBubble()
+        {
+            if (bubbleMode || IsDisposed) return;
+            ShowBubbleText(TextResources.BubbleWaiting, true);
+        }
+
         internal void ShowResponseBubble(string response)
         {
             if (bubbleMode || IsDisposed || string.IsNullOrWhiteSpace(response)) return;
+            ShowBubbleText(response, false);
+        }
+
+        internal bool BubbleShowsWaiting
+        {
+            get
+            {
+                return responseBubble != null && !responseBubble.IsDisposed &&
+                    responseBubble.Visible && responseBubble.bubbleIsWaiting;
+            }
+        }
+
+        private void ShowBubbleText(string response, bool waiting)
+        {
             if (responseBubble == null || responseBubble.IsDisposed)
                 responseBubble = new CompanionChatForm(true);
             responseBubble.SetBubbleColors(bubbleBackgroundColor, bubbleTextColor, bubbleBorderColor);
@@ -2838,6 +2886,7 @@ namespace CursorImeIndicator
                 summary = summary.Substring(0, length) + TextResources.CompanionBubbleMore;
             }
             responseBubble.bubbleText = summary;
+            responseBubble.bubbleIsWaiting = waiting;
             responseBubble.bubbleWorkingSize = Size.Empty;
             // ShowWithoutActivation controls visibility; native movement alone manages topmost.
             if (!responseBubble.Visible) responseBubble.Show();
@@ -3058,7 +3107,15 @@ namespace CursorImeIndicator
         // request that never began as being in flight.
         internal bool ReadScreenToBubble(bool ambient)
         {
-            if (bubbleMode || IsDisposed || busy) return false;
+            if (bubbleMode || IsDisposed) return false;
+            if (busy)
+            {
+                // A second request while one is running keeps the first. Nothing is
+                // captured, nothing is sent, nothing is scheduled and nothing is
+                // cancelled - the user is simply told it is still being worked on.
+                ShowWaitingBubble();
+                return false;
+            }
             screenOnlyMode = true;
             screenReadAmbient = ambient;
             Hide();
@@ -3160,6 +3217,9 @@ namespace CursorImeIndicator
                 responseBubble.IsHandleCreated ? responseBubble.Handle : IntPtr.Zero;
             string historyJson = string.Join(",", history.ToArray());
             statusLabel.Text = TextResources.CompanionWorking;
+            // The controller window is hidden during a screen read, so without
+            // this there is nothing on screen between the request and the answer.
+            if (screenRequest) ShowWaitingBubble();
             ThreadPool.QueueUserWorkItem(delegate
             {
                 string result = "";
@@ -13873,6 +13933,8 @@ namespace CursorImeIndicator
         private bool stoppedOnError;
         private string stopReason = "";
         private int intervalSeconds = 20;
+        private int answerDisplaySeconds = 20;
+        private DateTime answerShownUtc = DateTime.MinValue;
         private DateTime lastRequestEndUtc = DateTime.MinValue;
         private DateTime requestStartUtc = DateTime.MinValue;
         private DateTime resourceOkSinceUtc = DateTime.MinValue;
@@ -13897,6 +13959,41 @@ namespace CursorImeIndicator
         internal ReadState State { get { lock (sync) { return state; } } }
         internal string StopReason { get { lock (sync) { return stopReason; } } }
         internal bool IsStoppedOnError { get { lock (sync) { return stoppedOnError; } } }
+        internal bool IsEnabled { get { lock (sync) { return enabled; } } }
+
+        internal void SetAnswerDisplaySeconds(int value)
+        {
+            lock (sync) { answerDisplaySeconds = value < 1 ? 1 : value; }
+        }
+
+        // Counted from the moment a real answer was actually put on screen -
+        // never from when the request started, and never from the placeholder
+        // shown while it was running.
+        internal void NoteAnswerShown()
+        {
+            lock (sync) { answerShownUtc = NowUtc(); }
+        }
+
+        // Called whenever the bubble stops showing an answer, whether the timer
+        // hid it or the user did. Clearing the stamp is what guarantees the timer
+        // can never bring a hidden answer back: it only ever hides, and once this
+        // is clear it has nothing left to act on.
+        internal void NoteAnswerHidden()
+        {
+            lock (sync) { answerShownUtc = DateTime.MinValue; }
+        }
+
+        // Measured against the moment of first display, so shortening the setting
+        // can expire an answer that is already up. That is the intended reading of
+        // "recalculated from when it was first shown".
+        internal bool ShouldHideAnswer()
+        {
+            lock (sync)
+            {
+                if (answerShownUtc == DateTime.MinValue) return false;
+                return (NowUtc() - answerShownUtc).TotalSeconds >= answerDisplaySeconds;
+            }
+        }
 
         internal void SetEnabled(bool value) { lock (sync) { enabled = value; } }
 
