@@ -384,6 +384,12 @@ namespace CursorImeIndicator
         public const string SecondsSuffix = "\uCD08";
         public const string BubbleWaiting = "\uAE30\uB2E4\uB824\uC918";
         public const string CloseBubbleNow = "\uD604\uC7AC \uB9D0\uD48D\uC120 \uB2EB\uAE30";
+        public const string SetReadRegionMenu = "\uC77D\uC744 \uC601\uC5ED \uC9C0\uC815";
+        public const string ClearReadRegionMenu = "\uC601\uC5ED \uC9C0\uC815 \uD574\uC81C";
+        public const string RegionPickHint = "\uB4DC\uB798\uADF8\uD574\uC11C \uC77D\uC744 \uC601\uC5ED\uC744 \uC9C0\uC815\uD558\uC138\uC694. Esc: \uCDE8\uC18C";
+        public const string RegionSaved = "\uC77D\uC744 \uC601\uC5ED\uC744 \uC800\uC7A5\uD588\uC5B4";
+        public const string RegionTooSmall = "\uC601\uC5ED\uC774 \uB108\uBB34 \uC791\uC544";
+        public const string RegionCleared = "\uC601\uC5ED \uC9C0\uC815\uC744 \uD574\uC81C\uD588\uC5B4";
         public const string ScreenReadIntervalMenu = "\uC77D\uAE30 \uAC04\uACA9";
         public const string AnswerDisplayMenu = "\uB2F5\uBCC0 \uD45C\uC2DC \uC2DC\uAC04";
         public const string PeriodicModelMenu = "\uC0C1\uC2DC \uC77D\uAE30 \uBAA8\uB378";
@@ -432,6 +438,12 @@ namespace CursorImeIndicator
         private ToolStripMenuItem continuousReadItem;
         private ToolStripMenuItem screenReadStateItem;
         private readonly ScreenReadScheduler screenReadScheduler = new ScreenReadScheduler();
+        private List<Form> regionOverlays;
+        private Form regionDragOverlay;
+        private bool regionDragging;
+        private Point regionDragStartClient;
+        private Point regionDragCurrentClient;
+        private Point regionDragStartPhysical;
         private readonly HotkeyWindow voiceHotkeyWindow;
         private HotkeySettingsForm hotkeySettingsForm;
 
@@ -563,6 +575,10 @@ namespace CursorImeIndicator
             bubbleGroup.DropDownItems.Add(new ToolStripMenuItem(TextResources.StopAndHideBubble, null,
                 delegate { OnBubbleStopHotkeyPressed(); }));
             bubbleGroup.DropDownItems.Add(new ToolStripMenuItem(TextResources.CompanionPromptTitle, null, OnEditCompanionPrompt));
+            bubbleGroup.DropDownItems.Add(new ToolStripMenuItem(TextResources.SetReadRegionMenu, null,
+                delegate { BeginPickReadRegion(); }));
+            bubbleGroup.DropDownItems.Add(new ToolStripMenuItem(TextResources.ClearReadRegionMenu, null,
+                delegate { ClearReadRegionForCursorMonitor(); }));
             bubbleGroup.DropDownItems.Add(new ToolStripMenuItem(TextResources.CloseBubbleNow, null,
                 delegate { CloseBubbleOnly(); }));
             bubbleGroup.DropDownItems.Add(CreateScreenReadIntervalMenu());
@@ -2427,8 +2443,187 @@ namespace CursorImeIndicator
             BeginScreenRead(true);
         }
 
+        // One overlay per monitor, each placed by its physical rectangle. Managed
+        // Bounds cannot be used for this: the process is system-DPI-aware, so a 96 DPI
+        // monitor is reported inflated by the primary monitor's scale and an overlay
+        // sized from it overhangs by exactly that factor. Measured on this machine:
+        // DISPLAY5 is physically 1920x1080 at (-1920,126) and Screen reports it as
+        // 2880x1620 at (-2880,189).
+        //
+        // One window covering the whole desktop would be simpler and is wrong for the
+        // same reason - there is no single scale that suits every monitor.
+        private void BeginPickReadRegion()
+        {
+            if (regionOverlays != null) return;
+            List<Rectangle> monitors;
+            try { monitors = CompanionChatForm.ListPhysicalMonitorBounds(); }
+            catch (InvalidOperationException) { return; }
+            if (monitors.Count == 0) return;
+
+            regionOverlays = new List<Form>();
+            regionDragging = false;
+            regionDragOverlay = null;
+            foreach (Rectangle monitor in monitors)
+            {
+                Form overlay = new Form();
+                overlay.FormBorderStyle = FormBorderStyle.None;
+                overlay.ShowInTaskbar = false;
+                overlay.StartPosition = FormStartPosition.Manual;
+                overlay.BackColor = Color.Black;
+                overlay.TopMost = true;
+                overlay.KeyPreview = true;
+                overlay.Cursor = Cursors.Cross;
+                overlay.Tag = monitor;
+                overlay.Paint += OnRegionOverlayPaint;
+                overlay.MouseDown += OnRegionOverlayMouseDown;
+                overlay.MouseMove += OnRegionOverlayMouseMove;
+                overlay.MouseUp += OnRegionOverlayMouseUp;
+                overlay.KeyDown += OnRegionOverlayKeyDown;
+                // Shown invisible and revealed once it is in the right place, so the
+                // frame between Show and SetWindowPos is not seen.
+                overlay.Opacity = 0.0;
+                regionOverlays.Add(overlay);
+                overlay.Show();
+                CompanionChatForm.PlaceWindowPhysical(overlay.Handle, monitor);
+                overlay.Opacity = 0.45;
+            }
+        }
+
+        private void CloseRegionOverlays()
+        {
+            if (regionOverlays == null) return;
+            List<Form> overlays = regionOverlays;
+            regionOverlays = null;
+            regionDragOverlay = null;
+            regionDragging = false;
+            // Close rather than Dispose: this runs from inside the overlays' own mouse
+            // and key handlers, and Close defers the teardown until they return.
+            foreach (Form overlay in overlays) overlay.Close();
+        }
+
+        private Rectangle RegionMarquee()
+        {
+            return Rectangle.FromLTRB(
+                Math.Min(regionDragStartClient.X, regionDragCurrentClient.X),
+                Math.Min(regionDragStartClient.Y, regionDragCurrentClient.Y),
+                Math.Max(regionDragStartClient.X, regionDragCurrentClient.X),
+                Math.Max(regionDragStartClient.Y, regionDragCurrentClient.Y));
+        }
+
+        private void OnRegionOverlayPaint(object sender, PaintEventArgs e)
+        {
+            Form overlay = (Form)sender;
+            using (SolidBrush ink = new SolidBrush(Color.White))
+            using (Font font = new Font(FontFamily.GenericSansSerif, 13f, FontStyle.Bold))
+            {
+                SizeF size = e.Graphics.MeasureString(TextResources.RegionPickHint, font);
+                e.Graphics.DrawString(TextResources.RegionPickHint, font, ink,
+                    (overlay.ClientSize.Width - size.Width) / 2f, 48f);
+            }
+            if (!regionDragging || !ReferenceEquals(overlay, regionDragOverlay)) return;
+            Rectangle marquee = RegionMarquee();
+            if (marquee.Width < 1 || marquee.Height < 1) return;
+            using (SolidBrush fill = new SolidBrush(Color.FromArgb(90, Color.White)))
+            using (Pen edge = new Pen(Color.White, 2f))
+            {
+                e.Graphics.FillRectangle(fill, marquee);
+                e.Graphics.DrawRectangle(edge, marquee.X, marquee.Y, marquee.Width - 1, marquee.Height - 1);
+            }
+        }
+
+        private void OnRegionOverlayMouseDown(object sender, MouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Left) { CloseRegionOverlays(); return; }
+            Point physical;
+            // The corner is taken from the physical cursor, never from the managed
+            // event position: the managed one is in this process's scaled space and on
+            // a secondary monitor it names a different pixel entirely.
+            if (!CompanionChatForm.TryGetPhysicalCursor(out physical)) { CloseRegionOverlays(); return; }
+            regionDragOverlay = (Form)sender;
+            regionDragging = true;
+            regionDragStartPhysical = physical;
+            regionDragStartClient = e.Location;
+            regionDragCurrentClient = e.Location;
+            regionDragOverlay.Invalidate();
+        }
+
+        private void OnRegionOverlayMouseMove(object sender, MouseEventArgs e)
+        {
+            if (!regionDragging || !ReferenceEquals(sender, regionDragOverlay)) return;
+            // Managed coordinates here on purpose: this only draws the marquee, and it
+            // has to line up with the window it is drawn in.
+            regionDragCurrentClient = e.Location;
+            regionDragOverlay.Invalidate();
+        }
+
+        private void OnRegionOverlayMouseUp(object sender, MouseEventArgs e)
+        {
+            if (!regionDragging || !ReferenceEquals(sender, regionDragOverlay)) return;
+            if (e.Button != MouseButtons.Left) return;
+            Point physical;
+            bool read = CompanionChatForm.TryGetPhysicalCursor(out physical);
+            Rectangle monitor = (Rectangle)((Form)sender).Tag;
+            Point start = regionDragStartPhysical;
+            CloseRegionOverlays();
+            if (read) CommitReadRegion(monitor, start, physical);
+        }
+
+        private void OnRegionOverlayKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.KeyCode != Keys.Escape) return;
+            e.Handled = true;
+            CloseRegionOverlays();
+        }
+
+        private void CommitReadRegion(Rectangle monitor, Point start, Point end)
+        {
+            Rectangle picked;
+            if (!CompanionChatForm.TryMakeReadRegion(monitor, start, end, out picked))
+            {
+                trayIcon.ShowBalloonTip(4000, TextResources.ScreenReadTitle,
+                    TextResources.RegionTooSmall, ToolTipIcon.Warning);
+                return;
+            }
+            string key;
+            Rectangle bounds;
+            // The monitor is named from the middle of what was drawn, not from where
+            // the cursor ended up: by the time the button came up the pointer may
+            // already have left the rectangle.
+            Point center = new Point(picked.Left + picked.Width / 2, picked.Top + picked.Height / 2);
+            try
+            {
+                if (!CompanionChatForm.TryDescribeMonitorAt(center, out key, out bounds)) return;
+            }
+            catch (InvalidOperationException) { return; }
+            settings.SetReadRegion(key, picked);
+            settings.Save();
+            screenReadScheduler.SetRegionMissing(false);
+            VoiceDebugLog.Write("read region set; monitor=" + key +
+                " region=" + CompanionChatForm.FormatLtrb(picked));
+            trayIcon.ShowBalloonTip(4000, TextResources.ScreenReadTitle,
+                TextResources.RegionSaved, ToolTipIcon.Info);
+        }
+
+        private void ClearReadRegionForCursorMonitor()
+        {
+            string key;
+            Rectangle bounds;
+            try
+            {
+                if (!CompanionChatForm.TryDescribeCursorMonitor(out key, out bounds)) return;
+            }
+            catch (InvalidOperationException) { return; }
+            settings.ClearReadRegionsForDevice(CompanionChatForm.MonitorKeyDevice(key));
+            settings.Save();
+            screenReadScheduler.SetRegionMissing(false);
+            trayIcon.ShowBalloonTip(4000, TextResources.ScreenReadTitle,
+                TextResources.RegionCleared, ToolTipIcon.Info);
+        }
+
         private void BeginScreenRead(bool ambient)
         {
+            // Reading while the overlays are up would capture the overlays.
+            if (regionOverlays != null) return;
             if (companionChatForm == null || companionChatForm.IsDisposed)
             {
                 companionChatForm = new CompanionChatForm();
@@ -4191,6 +4386,37 @@ namespace CursorImeIndicator
             IntPtr previous = EnterPhysicalScreenCoordinates();
             try { return DescribeMonitorCore(MonitorFromPoint(physical, 2), out key, out bounds); }
             finally { SetThreadDpiAwarenessContext(previous); }
+        }
+
+        // Every transition into physical coordinates lives in this class, so callers
+        // that need to place a window over a monitor go through here rather than
+        // opening a DPI context of their own.
+        internal static void PlaceWindowPhysical(IntPtr window, Rectangle physical)
+        {
+            IntPtr previous = EnterPhysicalScreenCoordinates();
+            try
+            {
+                NativeMethods.SetWindowPos(window, NativeMethods.HWND_TOPMOST,
+                    physical.Left, physical.Top, physical.Width, physical.Height,
+                    NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_SHOWWINDOW);
+            }
+            finally { SetThreadDpiAwarenessContext(previous); }
+        }
+
+        internal static bool TryGetPhysicalCursor(out Point physical)
+        {
+            return GetPhysicalCursorPos(out physical);
+        }
+
+        // Normalises a drag into a rectangle, in physical pixels, clamped to the
+        // monitor it was drawn on. Returns false when what is left is too small to be
+        // worth reading - a stray click is a click, not a region.
+        internal static bool TryMakeReadRegion(Rectangle monitor, Point start, Point end, out Rectangle region)
+        {
+            region = Rectangle.Intersect(Rectangle.FromLTRB(
+                Math.Min(start.X, end.X), Math.Min(start.Y, end.Y),
+                Math.Max(start.X, end.X), Math.Max(start.Y, end.Y)), monitor);
+            return region.Width >= MinReadRegionSide && region.Height >= MinReadRegionSide;
         }
 
         internal static bool TryDescribeCursorMonitor(out string key, out Rectangle bounds)
@@ -13273,6 +13499,18 @@ namespace CursorImeIndicator
         internal void ClearReadRegion(string key)
         {
             if (key != null) readRegions.Remove(key);
+        }
+
+        // Clearing has to work by device, not by exact key. The case that needs
+        // clearing most is a region stored under a layout that no longer exists, and
+        // its key is by definition not the one a live monitor produces now.
+        internal int ClearReadRegionsForDevice(string device)
+        {
+            List<string> doomed = new List<string>();
+            foreach (string key in readRegions.Keys)
+                if (CompanionChatForm.MonitorKeyDevice(key) == device) doomed.Add(key);
+            foreach (string key in doomed) readRegions.Remove(key);
+            return doomed.Count;
         }
 
         public const int MinSizePercent = 50;
