@@ -2440,6 +2440,11 @@ namespace CursorImeIndicator
                 return;
             }
             if (!screenReadScheduler.ShouldStartRead()) return;
+            // Ready by time and by resources. Whether there is anything new to look at
+            // is a separate question, and the only one that costs a screen copy - so it
+            // is asked last.
+            if (!screenReadScheduler.ShouldSampleForChange()) return;
+            if (!screenReadScheduler.NoteChangeSample(TakeChangeSignature())) return;
             BeginScreenRead(true);
         }
 
@@ -2487,6 +2492,38 @@ namespace CursorImeIndicator
                 CompanionChatForm.PlaceWindowPhysical(overlay.Handle, monitor);
                 overlay.Opacity = 0.45;
             }
+        }
+
+        // The same windows the real capture masks. Routed through the chat form so
+        // there is one producer: the form knows when the bubble is up, this knows the
+        // mascot, and a window masked in one path and not the other would read as
+        // change on every sample.
+        private IntPtr[] CaptureMaskWindows()
+        {
+            IntPtr mascot = indicatorForm != null && indicatorForm.IsHandleCreated ?
+                indicatorForm.Handle : IntPtr.Zero;
+            if (companionChatForm == null || companionChatForm.IsDisposed)
+                return mascot == IntPtr.Zero ? new IntPtr[0] : new IntPtr[] { mascot };
+            companionChatForm.MascotWindow = mascot;
+            return companionChatForm.CaptureMaskWindows();
+        }
+
+        private byte[] TakeChangeSignature()
+        {
+            if (regionOverlays != null) return null;
+            Rectangle bounds;
+            string monitorKey;
+            bool needsRegion;
+            try
+            {
+                if (!CompanionChatForm.TryResolveCaptureBounds(settings, out bounds, out monitorKey, out needsRegion))
+                {
+                    screenReadScheduler.SetRegionMissing(needsRegion);
+                    return null;
+                }
+            }
+            catch (InvalidOperationException) { return null; }
+            return CompanionChatForm.CaptureChangeSignature(bounds, CaptureMaskWindows());
         }
 
         private void CloseRegionOverlays()
@@ -2598,6 +2635,9 @@ namespace CursorImeIndicator
             settings.SetReadRegion(key, picked);
             settings.Save();
             screenReadScheduler.SetRegionMissing(false);
+            // A new region is a new picture. Comparing it against what the old one
+            // looked like would either fire at once or never.
+            screenReadScheduler.ForgetChangeBaseline();
             VoiceDebugLog.Write("read region set; monitor=" + key +
                 " region=" + CompanionChatForm.FormatLtrb(picked));
             trayIcon.ShowBalloonTip(4000, TextResources.ScreenReadTitle,
@@ -2616,6 +2656,7 @@ namespace CursorImeIndicator
             settings.ClearReadRegionsForDevice(CompanionChatForm.MonitorKeyDevice(key));
             settings.Save();
             screenReadScheduler.SetRegionMissing(false);
+            screenReadScheduler.ForgetChangeBaseline();
             trayIcon.ShowBalloonTip(4000, TextResources.ScreenReadTitle,
                 TextResources.RegionCleared, ToolTipIcon.Info);
         }
@@ -3336,7 +3377,7 @@ namespace CursorImeIndicator
         // here as much as the bubble does: it redraws continuously, so leaving it in
         // both feeds the model a picture of the app and would make change detection
         // fire on every check regardless of what the screen was actually doing.
-        private IntPtr[] BuildCaptureMaskWindows()
+        internal IntPtr[] CaptureMaskWindows()
         {
             List<IntPtr> windows = new List<IntPtr>();
             if (responseBubble != null && !responseBubble.IsDisposed && responseBubble.IsHandleCreated)
@@ -3431,7 +3472,16 @@ namespace CursorImeIndicator
 
         private void BeginChat()
         {
-            if (busy) return;
+            if (busy)
+            {
+                // Silently returning here would lose a screen read with no log line and
+                // no drawer state - the caller recorded a request that never began. The
+                // globalFlight branch below already reports itself; this one now does
+                // too.
+                if (screenOnlyMode && ScreenReadFailed != null)
+                    ScreenReadFailed(TextResources.CompanionBusy);
+                return;
+            }
             string prompt = promptBox.Text.Trim();
             string model = UsePeriodicModel() ? periodicModel : modelBox.Text.Trim();
             if (prompt.Length == 0)
@@ -3472,12 +3522,15 @@ namespace CursorImeIndicator
             bool includeScreen = screenCheck.Checked;
             Rectangle screenBounds = screenRequest ? captureBounds : Screen.FromRectangle(Bounds).Bounds;
             Rectangle excludedBounds = Visible ? Bounds : Rectangle.Empty;
-            IntPtr[] excludedWindows = BuildCaptureMaskWindows();
             string historyJson = string.Join(",", history.ToArray());
             statusLabel.Text = TextResources.CompanionWorking;
             // The controller window is hidden during a screen read, so without
             // this there is nothing on screen between the request and the answer.
             if (screenRequest) ShowWaitingBubble();
+            // Listed after the placeholder is up, not before. On the first read the
+            // bubble does not exist yet, so a list built earlier would miss it and the
+            // placeholder would then appear in the picture sent to the model.
+            IntPtr[] excludedWindows = CaptureMaskWindows();
             ThreadPool.QueueUserWorkItem(delegate
             {
                 string result = "";
@@ -4417,6 +4470,103 @@ namespace CursorImeIndicator
                 Math.Min(start.X, end.X), Math.Min(start.Y, end.Y),
                 Math.Max(start.X, end.X), Math.Max(start.Y, end.Y)), monitor);
             return region.Width >= MinReadRegionSide && region.Height >= MinReadRegionSide;
+        }
+
+        internal const int ChangeSignatureWidth = 64;
+
+        // A coarse greyscale thumbnail of the region, used only to decide whether the
+        // screen moved. Deliberately tiny: it has to be cheap enough to take every
+        // couple of seconds, and a signature fine enough to notice single pixels would
+        // fire on a blinking caret. The windows passed in are the same ones a real
+        // capture masks, and they have to be - a window masked in one and not the
+        // other reads as change on every sample.
+        internal static byte[] CaptureChangeSignature(Rectangle bounds, IntPtr[] windows)
+        {
+            if (bounds.Width <= 0 || bounds.Height <= 0) return null;
+            IntPtr previous = EnterPhysicalScreenCoordinates();
+            try
+            {
+                List<Rectangle> masks = new List<Rectangle>();
+                int[] rect = new int[4];
+                if (windows != null)
+                {
+                    foreach (IntPtr window in windows)
+                    {
+                        if (window == IntPtr.Zero || !ReadPhysicalWindowRect(window, rect)) continue;
+                        masks.Add(Rectangle.FromLTRB(rect[0], rect[1], rect[2], rect[3]));
+                    }
+                }
+                return BuildChangeSignature(bounds, masks.ToArray());
+            }
+            catch (InvalidOperationException) { return null; }
+            catch (OutOfMemoryException) { return null; }
+            finally { SetThreadDpiAwarenessContext(previous); }
+        }
+
+        private static byte[] BuildChangeSignature(Rectangle bounds, Rectangle[] excluded)
+        {
+            int width = Math.Max(1, Math.Min(ChangeSignatureWidth, bounds.Width));
+            int height = Math.Max(1, (int)((long)bounds.Height * width / bounds.Width));
+            using (Bitmap full = new Bitmap(bounds.Width, bounds.Height, PixelFormat.Format24bppRgb))
+            {
+                using (Graphics graphics = Graphics.FromImage(full))
+                {
+                    graphics.CopyFromScreen(bounds.Location, Point.Empty, bounds.Size);
+                    foreach (Rectangle area in excluded)
+                    {
+                        Rectangle mask = Rectangle.Intersect(bounds, area);
+                        if (mask.IsEmpty) continue;
+                        mask.Offset(-bounds.X, -bounds.Y);
+                        graphics.FillRectangle(Brushes.DimGray, mask);
+                    }
+                }
+                using (Bitmap small = new Bitmap(width, height, PixelFormat.Format24bppRgb))
+                {
+                    using (Graphics graphics = Graphics.FromImage(small))
+                    {
+                        graphics.InterpolationMode = InterpolationMode.HighQualityBilinear;
+                        graphics.DrawImage(full, new Rectangle(0, 0, width, height));
+                    }
+                    return ReadLuma(small);
+                }
+            }
+        }
+
+        internal static byte[] ReadLuma(Bitmap image)
+        {
+            byte[] luma = new byte[image.Width * image.Height];
+            BitmapData data = image.LockBits(new Rectangle(0, 0, image.Width, image.Height),
+                ImageLockMode.ReadOnly, PixelFormat.Format24bppRgb);
+            try
+            {
+                byte[] row = new byte[Math.Abs(data.Stride)];
+                int index = 0;
+                for (int y = 0; y < image.Height; y++)
+                {
+                    System.Runtime.InteropServices.Marshal.Copy(
+                        new IntPtr(data.Scan0.ToInt64() + (long)y * data.Stride), row, 0, row.Length);
+                    for (int x = 0; x < image.Width; x++)
+                    {
+                        // Rec. 601 luma in integers. The exact weights do not matter -
+                        // only that the same picture always produces the same number.
+                        int blue = row[x * 3];
+                        int green = row[x * 3 + 1];
+                        int red = row[x * 3 + 2];
+                        luma[index++] = (byte)((red * 77 + green * 150 + blue * 29) >> 8);
+                    }
+                }
+            }
+            finally { image.UnlockBits(data); }
+            return luma;
+        }
+
+        internal IntPtr BubbleWindow
+        {
+            get
+            {
+                return responseBubble != null && !responseBubble.IsDisposed &&
+                    responseBubble.IsHandleCreated ? responseBubble.Handle : IntPtr.Zero;
+            }
         }
 
         internal static bool TryDescribeCursorMonitor(out string key, out Rectangle bounds)
@@ -14566,7 +14716,109 @@ namespace CursorImeIndicator
             }
         }
 
-        internal void SetEnabled(bool value) { lock (sync) { enabled = value; } }
+        internal void SetEnabled(bool value)
+        {
+            lock (sync)
+            {
+                // Switching automatic reading on reads at once rather than waiting for
+                // the screen to change, which is what the drawer tip promises. Dropping
+                // the baseline is what makes the next sample count as a change.
+                if (value && !enabled) ForgetChangeBaselineCore();
+                enabled = value;
+            }
+        }
+
+        internal const int ChangeThreshold = 8;
+        internal const int ChangeConfirmations = 2;
+        internal const int ChangeSampleIntervalMilliseconds = 2000;
+
+        private byte[] changeBaseline;
+        private int changeStreak;
+        private DateTime lastChangeSampleUtc = DateTime.MinValue;
+
+        // Mean absolute difference per pixel, or -1 when the two cannot be compared.
+        internal static int CompareSignatures(byte[] first, byte[] second)
+        {
+            if (first == null || second == null || first.Length == 0 || first.Length != second.Length)
+                return -1;
+            long total = 0;
+            for (int i = 0; i < first.Length; i++)
+                total += Math.Abs(first[i] - second[i]);
+            return (int)(total / first.Length);
+        }
+
+        // Sampling is much cheaper than inference but not free - it copies part of the
+        // screen - so it runs on its own slower beat than the one-second heartbeat.
+        internal bool ShouldSampleForChange()
+        {
+            lock (sync)
+            {
+                DateTime now = NowUtc();
+                if (lastChangeSampleUtc != DateTime.MinValue &&
+                    (now - lastChangeSampleUtc).TotalMilliseconds < ChangeSampleIntervalMilliseconds)
+                {
+                    state = ReadState.WaitingForChange;
+                    return false;
+                }
+                lastChangeSampleUtc = now;
+                return true;
+            }
+        }
+
+        // Two consecutive samples have to differ from the last read before another one
+        // fires. One is not enough: a window sliding past, a notification appearing and
+        // going again, a video frame - all produce a single different sample and are
+        // not worth a model call.
+        internal bool NoteChangeSample(byte[] signature)
+        {
+            lock (sync)
+            {
+                if (signature == null || signature.Length == 0)
+                {
+                    // A signature that could not be taken is not evidence of stillness.
+                    // Reading anyway is the behaviour this feature had before change
+                    // detection existed; refusing forever because one capture failed is
+                    // not.
+                    changeStreak = 0;
+                    return true;
+                }
+                if (changeBaseline == null || changeBaseline.Length != signature.Length)
+                {
+                    changeBaseline = signature;
+                    changeStreak = 0;
+                    return true;
+                }
+                if (CompareSignatures(changeBaseline, signature) < ChangeThreshold)
+                {
+                    changeStreak = 0;
+                    state = ReadState.WaitingForChange;
+                    return false;
+                }
+                changeStreak++;
+                if (changeStreak < ChangeConfirmations)
+                {
+                    state = ReadState.WaitingForChange;
+                    return false;
+                }
+                // Compared against the last read from here on, not against the sample
+                // that happened to trigger this one.
+                changeStreak = 0;
+                changeBaseline = signature;
+                return true;
+            }
+        }
+
+        internal void ForgetChangeBaseline()
+        {
+            lock (sync) { ForgetChangeBaselineCore(); }
+        }
+
+        private void ForgetChangeBaselineCore()
+        {
+            changeBaseline = null;
+            changeStreak = 0;
+            lastChangeSampleUtc = DateTime.MinValue;
+        }
 
         internal void SetIntervalSeconds(int value)
         {
