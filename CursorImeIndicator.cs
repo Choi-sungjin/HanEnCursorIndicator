@@ -2438,10 +2438,13 @@ namespace CursorImeIndicator
         private void OnOpenCompanionChat(object sender, EventArgs e)
         {
             string reason;
+            UpdateReadRegionState();
             if (!screenReadScheduler.AllowsManualRead(out reason))
             {
                 VoiceDebugLog.Write("screen read refused; entry=manual reason=" + reason);
-                ShowScreenReadStateBalloon(ScreenReadScheduler.ReadState.ResourceLow);
+                // Whatever it actually was. Reporting low memory for a stale region
+                // sends the user to clear memory that was never the problem.
+                ShowScreenReadStateBalloon(screenReadScheduler.State);
                 return;
             }
             BeginScreenRead(false);
@@ -2471,6 +2474,7 @@ namespace CursorImeIndicator
                 ShowScreenReadStateBalloon(ScreenReadScheduler.ReadState.ResourceLow);
                 return;
             }
+            UpdateReadRegionState();
             if (!screenReadScheduler.ShouldStartRead()) return;
             // Ready by time and by resources. Whether there is anything new to look at
             // is a separate question, and the only one that costs a screen copy - so it
@@ -2538,6 +2542,29 @@ namespace CursorImeIndicator
                 return mascot == IntPtr.Zero ? new IntPtr[0] : new IntPtr[] { mascot };
             companionChatForm.MascotWindow = mascot;
             return companionChatForm.CaptureMaskWindows();
+        }
+
+        // Asked again every second rather than latched. The answer is about the
+        // display, so a monitor plugged back as it was - or a cursor moving to one
+        // with no stale region - has to recover on its own. Nothing else would do it:
+        // both the timer and a hand-fired read refuse while the flag is set, so the
+        // code that clears it never gets to run.
+        private void UpdateReadRegionState()
+        {
+            Rectangle bounds;
+            string monitorKey;
+            bool needsRegion = false;
+            try
+            {
+                CompanionChatForm.TryResolveCaptureBounds(settings, out bounds, out monitorKey, out needsRegion);
+            }
+            catch (InvalidOperationException)
+            {
+                // A monitor that cannot be measured is not a region that needs setting.
+                // The resource gate is what reports an unreadable machine.
+                needsRegion = false;
+            }
+            screenReadScheduler.SetRegionMissing(needsRegion);
         }
 
         private byte[] TakeChangeSignature()
@@ -3412,7 +3439,13 @@ namespace CursorImeIndicator
         internal IntPtr[] CaptureMaskWindows()
         {
             List<IntPtr> windows = new List<IntPtr>();
-            if (responseBubble != null && !responseBubble.IsDisposed && responseBubble.IsHandleCreated)
+            // Visible, not merely created. Hiding the bubble leaves its window alive
+            // and GetWindowRect keeps returning where it last sat, so masking on the
+            // handle alone paints a grey box over that spot in every later capture -
+            // and, now that change detection shares this list, blinds it there too.
+            // ShowBubbleText calls Show() synchronously, so a bubble put up a moment
+            // ago is already visible by the time this runs.
+            if (responseBubble != null && !responseBubble.IsDisposed && responseBubble.Visible)
                 windows.Add(responseBubble.Handle);
             if (MascotWindow != IntPtr.Zero) windows.Add(MascotWindow);
             return windows.ToArray();
@@ -4597,7 +4630,7 @@ namespace CursorImeIndicator
             get
             {
                 return responseBubble != null && !responseBubble.IsDisposed &&
-                    responseBubble.IsHandleCreated ? responseBubble.Handle : IntPtr.Zero;
+                    responseBubble.Visible ? responseBubble.Handle : IntPtr.Zero;
             }
         }
 
@@ -15006,20 +15039,27 @@ namespace CursorImeIndicator
                 // wrong place. Only setting a region fixes it.
                 if (regionMissing)
                 {
+                    state = ReadState.NeedsRegion;
                     reason = "read region not set for this display";
                     return false;
                 }
                 if (IsSnapshotStale(current, now))
                 {
+                    state = ReadState.ResourceLow;
                     reason = "no fresh measurement";
                     return false;
                 }
                 if (resourceBlocked)
                 {
+                    state = ReadState.ResourceLow;
                     reason = "resources low";
                     return false;
                 }
-                if (!AllowsStart(current, out reason)) return false;
+                if (!AllowsStart(current, out reason))
+                {
+                    state = ReadState.ResourceLow;
+                    return false;
+                }
                 stoppedOnError = false;
                 stopReason = "";
                 return true;
