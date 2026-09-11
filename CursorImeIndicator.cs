@@ -2453,7 +2453,36 @@ namespace CursorImeIndicator
             companionChatForm.SetBubbleFontSize(settings.CompanionFontSize);
             companionChatForm.SetScreenReadPrompt(settings.CompanionPrompt);
             companionChatForm.SetPeriodicModel(settings.PeriodicModel);
-            if (companionChatForm.ReadScreenToBubble(ambient))
+            companionChatForm.MascotWindow = indicatorForm != null && indicatorForm.IsHandleCreated ?
+                indicatorForm.Handle : IntPtr.Zero;
+
+            Rectangle readBounds;
+            string monitorKey;
+            bool needsRegion;
+            bool resolved;
+            try
+            {
+                resolved = CompanionChatForm.TryResolveCaptureBounds(settings, out readBounds,
+                    out monitorKey, out needsRegion);
+            }
+            catch (InvalidOperationException)
+            {
+                resolved = false;
+                needsRegion = false;
+                readBounds = Rectangle.Empty;
+                monitorKey = "";
+            }
+            screenReadScheduler.SetRegionMissing(needsRegion);
+            if (!resolved)
+            {
+                VoiceDebugLog.Write("screen read skipped; entry=" + (ambient ? "timer" : "manual") +
+                    " reason=" + (needsRegion ? "region-stale" : "monitor-unknown"));
+                // The timer says so in the drawer every second; a read the user asked
+                // for has to answer the click it came from.
+                if (!ambient) ShowScreenReadStateBalloon(ScreenReadScheduler.ReadState.NeedsRegion);
+                return;
+            }
+            if (companionChatForm.ReadScreenToBubble(ambient, readBounds, monitorKey))
             {
                 screenReadScheduler.NoteRequestStarted();
                 return;
@@ -2655,6 +2684,7 @@ namespace CursorImeIndicator
         private bool timedOut;
         private bool busy;
         private Rectangle captureBounds;
+        private string captureMonitorKey = "";
 
         internal CompanionChatForm() : this(false)
         {
@@ -3103,9 +3133,42 @@ namespace CursorImeIndicator
             periodicModel = value == null ? "" : value.Trim();
         }
 
+        // The mascot window, handed over by the owner because this form does not own
+        // it. Zero until it is set, which only means nothing extra gets masked.
+        internal IntPtr MascotWindow { get; set; }
+
+        // Everything the app itself draws on top of the screen. The mascot belongs
+        // here as much as the bubble does: it redraws continuously, so leaving it in
+        // both feeds the model a picture of the app and would make change detection
+        // fire on every check regardless of what the screen was actually doing.
+        private IntPtr[] BuildCaptureMaskWindows()
+        {
+            List<IntPtr> windows = new List<IntPtr>();
+            if (responseBubble != null && !responseBubble.IsDisposed && responseBubble.IsHandleCreated)
+                windows.Add(responseBubble.Handle);
+            if (MascotWindow != IntPtr.Zero) windows.Add(MascotWindow);
+            return windows.ToArray();
+        }
+
+        // The display can be rearranged while a read is running. An answer about a
+        // layout that no longer exists describes pixels that are no longer there, so
+        // it is dropped. The point tested is the middle of what was captured, not the
+        // cursor - the cursor is free to wander to another monitor mid-request, and
+        // that is not a layout change.
+        private bool IsCaptureMonitorUnchanged()
+        {
+            if (string.IsNullOrEmpty(captureMonitorKey)) return true;
+            Point center = new Point(captureBounds.Left + captureBounds.Width / 2,
+                captureBounds.Top + captureBounds.Height / 2);
+            string key;
+            Rectangle bounds;
+            if (!TryDescribeMonitorAt(center, out key, out bounds)) return false;
+            return key == captureMonitorKey;
+        }
+
         // Returns false when nothing started, so the caller does not record a
         // request that never began as being in flight.
-        internal bool ReadScreenToBubble(bool ambient)
+        internal bool ReadScreenToBubble(bool ambient, Rectangle bounds, string monitorKey)
         {
             if (bubbleMode || IsDisposed) return false;
             if (busy)
@@ -3122,7 +3185,8 @@ namespace CursorImeIndicator
             // A hidden controller must not acquire focus while creating its callback handle.
             TopMost = false;
             IntPtr callbackHandle = Handle;
-            captureBounds = GetCursorMonitorBounds();
+            captureBounds = bounds;
+            captureMonitorKey = monitorKey == null ? "" : monitorKey;
             history.Clear();
             screenReadStopped = false;
             screenCheck.Checked = true;
@@ -3213,8 +3277,7 @@ namespace CursorImeIndicator
             bool includeScreen = screenCheck.Checked;
             Rectangle screenBounds = screenRequest ? captureBounds : Screen.FromRectangle(Bounds).Bounds;
             Rectangle excludedBounds = Visible ? Bounds : Rectangle.Empty;
-            IntPtr excludedBubbleWindow = responseBubble != null && !responseBubble.IsDisposed &&
-                responseBubble.IsHandleCreated ? responseBubble.Handle : IntPtr.Zero;
+            IntPtr[] excludedWindows = BuildCaptureMaskWindows();
             string historyJson = string.Join(",", history.ToArray());
             statusLabel.Text = TextResources.CompanionWorking;
             // The controller window is hidden during a screen read, so without
@@ -3245,8 +3308,8 @@ namespace CursorImeIndicator
                             if (!openAi && !SupportsVision(show))
                                 throw new InvalidOperationException(TextResources.CompanionNoVision);
                             ThrowIfCancelled(requestId);
-                            image = screenRequest ? CapturePhysicalScreenWithMask(screenBounds, excludedBubbleWindow) :
-                                CaptureScreenBase64(screenBounds, excludedBounds);
+                            image = screenRequest ? CapturePhysicalScreenWithMask(screenBounds, excludedWindows) :
+                                CaptureScreenBase64(screenBounds, new Rectangle[] { excludedBounds });
                         }
                         ThrowIfCancelled(requestId);
                         string request = screenRequest ? BuildScreenReadRequest(model, prompt, image, openAi, ambientRequest) :
@@ -3325,6 +3388,12 @@ namespace CursorImeIndicator
             promptBox.Enabled = true;
             modelBox.Enabled = true;
             screenCheck.Enabled = true;
+            if (success && screenOnlyMode && !IsCaptureMonitorUnchanged())
+            {
+                VoiceDebugLog.Write("screen response dropped; the display changed while it was running");
+                success = false;
+                result = ScreenReadScheduler.FormatStateText(ScreenReadScheduler.ReadState.NeedsRegion);
+            }
             if (success && screenOnlyMode)
             {
                 string failureCode = GetScreenTextFailureCode(result);
@@ -3960,6 +4029,40 @@ namespace CursorImeIndicator
         private static extern bool ReadPhysicalMonitorInfo(IntPtr monitor,
             [System.Runtime.InteropServices.In, System.Runtime.InteropServices.Out] int[] info);
 
+        // MONITORINFOEX. The int[] overload above cannot carry szDevice - a string
+        // needs a real struct declaration - so this is a second overload of the same
+        // export rather than a change to the one the capture path already uses.
+        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential,
+            CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+        private struct MonitorInfoEx
+        {
+            public int Size;
+            public int MonitorLeft;
+            public int MonitorTop;
+            public int MonitorRight;
+            public int MonitorBottom;
+            public int WorkLeft;
+            public int WorkTop;
+            public int WorkRight;
+            public int WorkBottom;
+            public int Flags;
+            [System.Runtime.InteropServices.MarshalAs(
+                System.Runtime.InteropServices.UnmanagedType.ByValTStr, SizeConst = 32)]
+            public string Device;
+        }
+
+        [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "GetMonitorInfoW",
+            CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+        private static extern bool ReadNamedMonitorInfo(IntPtr monitor, ref MonitorInfoEx info);
+
+        [System.Runtime.InteropServices.DllImport("shcore.dll")]
+        private static extern int GetDpiForMonitor(IntPtr monitor, int dpiType, out uint dpiX, out uint dpiY);
+
+        private delegate bool MonitorEnumProc(IntPtr monitor, IntPtr dc, IntPtr rect, IntPtr data);
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool EnumDisplayMonitors(IntPtr dc, IntPtr clip, MonitorEnumProc callback, IntPtr data);
+
         private static IntPtr EnterPhysicalScreenCoordinates()
         {
             IntPtr previous = SetThreadDpiAwarenessContext(new IntPtr(-4));
@@ -3991,20 +4094,167 @@ namespace CursorImeIndicator
             finally { SetThreadDpiAwarenessContext(previous); }
         }
 
+        internal const int MinReadRegionSide = 64;
+
+        // Identifies a monitor by everything that would make a stored rectangle point
+        // at the wrong pixels: which output it is, where it sits on the desktop, how
+        // large it is, and at what scale. Any of those changing yields a different
+        // key, and a region stored under the old key is then refused rather than read.
+        //
+        // Known limit: two identical panels swapped between ports produce the same
+        // key, so their regions swap with them. Closing that needs the display
+        // hardware id, which is a great deal of native surface for a rare replug.
+        internal static string MakeMonitorKey(string device, Rectangle bounds, int dpi)
+        {
+            StringBuilder name = new StringBuilder();
+            string source = device == null ? "" : device;
+            // Device names arrive as \\.\DISPLAY1. The settings file splits compound
+            // keys on dots, so the punctuation cannot survive into the key. Nothing is
+            // truncated: DISPLAY1 and DISPLAY10 have to stay different.
+            for (int i = 0; i < source.Length; i++)
+                if (char.IsLetterOrDigit(source[i])) name.Append(source[i]);
+            if (name.Length == 0) name.Append("UNKNOWN");
+            return name + "|" + FormatLtrb(bounds) + "|" +
+                dpi.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        internal static string MonitorKeyDevice(string key)
+        {
+            if (key == null) return "";
+            int bar = key.IndexOf('|');
+            return bar < 0 ? key : key.Substring(0, bar);
+        }
+
+        internal static string FormatLtrb(Rectangle bounds)
+        {
+            System.Globalization.CultureInfo culture = System.Globalization.CultureInfo.InvariantCulture;
+            return bounds.Left.ToString(culture) + "," + bounds.Top.ToString(culture) + "," +
+                bounds.Right.ToString(culture) + "," + bounds.Bottom.ToString(culture);
+        }
+
+        internal static bool TryParseLtrb(string text, out Rectangle bounds)
+        {
+            bounds = Rectangle.Empty;
+            if (text == null) return false;
+            string[] parts = text.Split(',');
+            if (parts.Length != 4) return false;
+            int[] values = new int[4];
+            for (int i = 0; i < 4; i++)
+                if (!int.TryParse(parts[i], System.Globalization.NumberStyles.Integer,
+                    System.Globalization.CultureInfo.InvariantCulture, out values[i])) return false;
+            if (values[2] <= values[0] || values[3] <= values[1]) return false;
+            bounds = Rectangle.FromLTRB(values[0], values[1], values[2], values[3]);
+            return true;
+        }
+
+        // Callers are already inside a physical-coordinate context.
+        private static bool DescribeMonitorCore(IntPtr monitor, out string key, out Rectangle bounds)
+        {
+            key = "";
+            bounds = Rectangle.Empty;
+            MonitorInfoEx info = new MonitorInfoEx();
+            info.Size = System.Runtime.InteropServices.Marshal.SizeOf(typeof(MonitorInfoEx));
+            if (monitor == IntPtr.Zero || !ReadNamedMonitorInfo(monitor, ref info)) return false;
+            bounds = Rectangle.FromLTRB(info.MonitorLeft, info.MonitorTop, info.MonitorRight, info.MonitorBottom);
+            uint dpiX, dpiY;
+            // MDT_EFFECTIVE_DPI. An unreadable scale would silently change the key, so
+            // it counts as a failure to identify the monitor rather than a default.
+            if (GetDpiForMonitor(monitor, 0, out dpiX, out dpiY) != 0) return false;
+            key = MakeMonitorKey(info.Device, bounds, (int)dpiX);
+            return true;
+        }
+
+        // Physical pixels for every monitor. Screen.AllScreens cannot be used for this:
+        // the process is system-DPI-aware, so on a machine whose primary monitor is
+        // scaled it reports the other monitors inflated by that same factor.
+        internal static List<Rectangle> ListPhysicalMonitorBounds()
+        {
+            List<Rectangle> found = new List<Rectangle>();
+            IntPtr previous = EnterPhysicalScreenCoordinates();
+            try
+            {
+                EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero,
+                    delegate(IntPtr monitor, IntPtr dc, IntPtr rect, IntPtr data)
+                    {
+                        string key;
+                        Rectangle bounds;
+                        if (DescribeMonitorCore(monitor, out key, out bounds)) found.Add(bounds);
+                        return true;
+                    }, IntPtr.Zero);
+            }
+            finally { SetThreadDpiAwarenessContext(previous); }
+            return found;
+        }
+
+        internal static bool TryDescribeMonitorAt(Point physical, out string key, out Rectangle bounds)
+        {
+            IntPtr previous = EnterPhysicalScreenCoordinates();
+            try { return DescribeMonitorCore(MonitorFromPoint(physical, 2), out key, out bounds); }
+            finally { SetThreadDpiAwarenessContext(previous); }
+        }
+
+        internal static bool TryDescribeCursorMonitor(out string key, out Rectangle bounds)
+        {
+            key = "";
+            bounds = Rectangle.Empty;
+            Point cursor;
+            if (!GetPhysicalCursorPos(out cursor)) return false;
+            return TryDescribeMonitorAt(cursor, out key, out bounds);
+        }
+
+        // Three outcomes, and the caller has to tell the last two apart:
+        //   true                      - read this rectangle
+        //   false, needsRegion true   - a region is stored for this monitor, but under
+        //                               a layout that no longer exists; refuse rather
+        //                               than read somewhere the user never chose
+        //   false, needsRegion false  - the monitor could not be identified at all
+        // A monitor the user simply never configured is not an error: it reads whole,
+        // which is what the app did before regions existed.
+        internal static bool TryResolveCaptureBounds(AppSettings settings, out Rectangle bounds,
+            out string monitorKey, out bool needsRegion)
+        {
+            needsRegion = false;
+            bounds = Rectangle.Empty;
+            Rectangle monitor;
+            if (!TryDescribeCursorMonitor(out monitorKey, out monitor)) return false;
+            bounds = monitor;
+            if (settings == null) return true;
+            Rectangle stored;
+            if (settings.TryGetReadRegion(monitorKey, out stored))
+            {
+                Rectangle clamped = Rectangle.Intersect(stored, monitor);
+                if (clamped.Width >= MinReadRegionSide && clamped.Height >= MinReadRegionSide)
+                    bounds = clamped;
+                return true;
+            }
+            if (settings.HasReadRegionForDevice(MonitorKeyDevice(monitorKey)))
+            {
+                needsRegion = true;
+                return false;
+            }
+            return true;
+        }
+
         [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "GetWindowRect")]
         private static extern bool ReadPhysicalWindowRect(IntPtr window,
             [System.Runtime.InteropServices.In, System.Runtime.InteropServices.Out] int[] rect);
 
-        private static string CapturePhysicalScreenWithMask(Rectangle bounds, IntPtr bubbleWindow)
+        private static string CapturePhysicalScreenWithMask(Rectangle bounds, IntPtr[] windows)
         {
             IntPtr previous = EnterPhysicalScreenCoordinates();
             try
             {
-                Rectangle mask = Rectangle.Empty;
+                List<Rectangle> masks = new List<Rectangle>();
                 int[] rect = new int[4];
-                if (bubbleWindow != IntPtr.Zero && ReadPhysicalWindowRect(bubbleWindow, rect))
-                    mask = Rectangle.FromLTRB(rect[0], rect[1], rect[2], rect[3]);
-                return CaptureScreenBase64(bounds, mask);
+                if (windows != null)
+                {
+                    foreach (IntPtr window in windows)
+                    {
+                        if (window == IntPtr.Zero || !ReadPhysicalWindowRect(window, rect)) continue;
+                        masks.Add(Rectangle.FromLTRB(rect[0], rect[1], rect[2], rect[3]));
+                    }
+                }
+                return CaptureScreenBase64(bounds, masks.ToArray());
             }
             finally { SetThreadDpiAwarenessContext(previous); }
         }
@@ -4012,11 +4262,11 @@ namespace CursorImeIndicator
         private static string CapturePhysicalScreenBase64(Rectangle bounds)
         {
             IntPtr previous = EnterPhysicalScreenCoordinates();
-            try { return CaptureScreenBase64(bounds, Rectangle.Empty); }
+            try { return CaptureScreenBase64(bounds, null); }
             finally { SetThreadDpiAwarenessContext(previous); }
         }
 
-        private static string CaptureScreenBase64(Rectangle bounds, Rectangle excluded)
+        private static string CaptureScreenBase64(Rectangle bounds, Rectangle[] excluded)
         {
             if (bounds.Width <= 0 || bounds.Height <= 0 ||
                 (long)bounds.Width * bounds.Height > 40000000)
@@ -4026,11 +4276,15 @@ namespace CursorImeIndicator
                 using (Graphics graphics = Graphics.FromImage(desktop))
                 {
                     graphics.CopyFromScreen(bounds.Location, Point.Empty, bounds.Size);
-                    Rectangle mask = Rectangle.Intersect(bounds, excluded);
-                    if (!mask.IsEmpty)
+                    if (excluded != null)
                     {
-                        mask.Offset(-bounds.X, -bounds.Y);
-                        graphics.FillRectangle(Brushes.DimGray, mask);
+                        foreach (Rectangle area in excluded)
+                        {
+                            Rectangle mask = Rectangle.Intersect(bounds, area);
+                            if (mask.IsEmpty) continue;
+                            mask.Offset(-bounds.X, -bounds.Y);
+                            graphics.FillRectangle(Brushes.DimGray, mask);
+                        }
                     }
                 }
                 double scale = Math.Min(1.0, 1280.0 / Math.Max(bounds.Width, bounds.Height));
@@ -12979,6 +13233,48 @@ namespace CursorImeIndicator
         public const int MinAnswerDisplaySeconds = 10;
         public const int MaxAnswerDisplaySeconds = 60;
         public int AnswerDisplaySeconds = 20;
+        // Physical-pixel rectangles keyed by CompanionChatForm.MakeMonitorKey. Held as
+        // a dictionary and written as a numbered list, because writing only the current
+        // monitor would let any unrelated save - a font size change, say - erase the
+        // regions belonging to every other monitor.
+        internal const int MaxReadRegions = 8;
+        private readonly Dictionary<string, Rectangle> readRegions =
+            new Dictionary<string, Rectangle>(StringComparer.Ordinal);
+
+        internal int ReadRegionCount { get { return readRegions.Count; } }
+
+        internal bool TryGetReadRegion(string key, out Rectangle region)
+        {
+            return readRegions.TryGetValue(key == null ? "" : key, out region);
+        }
+
+        internal bool HasReadRegionForDevice(string device)
+        {
+            foreach (string key in readRegions.Keys)
+                if (CompanionChatForm.MonitorKeyDevice(key) == device) return true;
+            return false;
+        }
+
+        internal void SetReadRegion(string key, Rectangle region)
+        {
+            if (string.IsNullOrEmpty(key)) return;
+            // Layouts accumulate: the same monitor at a new resolution is a new key, so
+            // the list is capped. When it is full the entry dropped is whichever the
+            // dictionary offers first - eight covers any real desk several times over.
+            if (!readRegions.ContainsKey(key) && readRegions.Count >= MaxReadRegions)
+            {
+                string victim = null;
+                foreach (string existing in readRegions.Keys) { victim = existing; break; }
+                if (victim != null) readRegions.Remove(victim);
+            }
+            readRegions[key] = region;
+        }
+
+        internal void ClearReadRegion(string key)
+        {
+            if (key != null) readRegions.Remove(key);
+        }
+
         public const int MinSizePercent = 50;
         public const int MaxSizePercent = 250;
         private const int DefaultSizePercent = 100;
@@ -13020,6 +13316,8 @@ namespace CursorImeIndicator
                     string key = parts[0].Trim();
                     string valueText = parts[1].Trim();
                     if (TryLoadLabelCenter(settings, key, valueText))
+                        continue;
+                    if (TryLoadReadRegion(settings, key, valueText))
                         continue;
 
                     if (key.Equals("localAiSetupOffered", StringComparison.OrdinalIgnoreCase))
@@ -13242,6 +13540,14 @@ namespace CursorImeIndicator
                         lines.Add("label." + stateKey + "." + IndicatorPoseHelper.GetKey(pose) + "=" + FormatFaceCenter(GetLabelCenterByState(stateKey, pose)));
                     }
                 }
+                int readRegionIndex = 0;
+                foreach (KeyValuePair<string, Rectangle> pair in readRegions)
+                {
+                    if (readRegionIndex >= MaxReadRegions) break;
+                    lines.Add("readRegion." + readRegionIndex.ToString(CultureInfo.InvariantCulture) +
+                        "=" + pair.Key + "|" + CompanionChatForm.FormatLtrb(pair.Value));
+                    readRegionIndex++;
+                }
                 lines.Add("useLanguageColors=" + UseLanguageColors);
                 lines.Add("baseMascotColor=" + FormatColor(BaseMascotColor));
                 lines.Add("koreanMascotColor=" + FormatColor(KoreanMascotColor));
@@ -13433,6 +13739,32 @@ namespace CursorImeIndicator
         {
             PointF clamped = ClampFaceCenter(center);
             return clamped.X.ToString("0.###", CultureInfo.InvariantCulture) + "," + clamped.Y.ToString("0.###", CultureInfo.InvariantCulture);
+        }
+
+        // readRegion.<n>=<device>|<monitor LTRB>|<dpi>|<region LTRB>. The first three
+        // fields are the monitor key exactly as MakeMonitorKey wrote it, so the key
+        // rebuilt here compares equal to one formed from a live monitor. A malformed
+        // line is consumed and dropped rather than passed down the main chain.
+        private static bool TryLoadReadRegion(AppSettings settings, string key, string value)
+        {
+            if (!key.StartsWith("readRegion.", StringComparison.Ordinal))
+                return false;
+            string[] parts = value.Split('|');
+            if (parts.Length != 4) return true;
+            int dpi;
+            if (!int.TryParse(parts[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out dpi) || dpi <= 0)
+                return true;
+            Rectangle monitor;
+            Rectangle region;
+            if (!CompanionChatForm.TryParseLtrb(parts[1], out monitor) ||
+                !CompanionChatForm.TryParseLtrb(parts[3], out region))
+                return true;
+            region = Rectangle.Intersect(region, monitor);
+            if (region.Width < CompanionChatForm.MinReadRegionSide ||
+                region.Height < CompanionChatForm.MinReadRegionSide)
+                return true;
+            settings.SetReadRegion(parts[0] + "|" + parts[1] + "|" + parts[2], region);
+            return true;
         }
 
         private static bool TryLoadLabelCenter(AppSettings settings, string key, string value)
@@ -13940,6 +14272,7 @@ namespace CursorImeIndicator
         private DateTime resourceOkSinceUtc = DateTime.MinValue;
         private DateTime abortHoldSinceUtc = DateTime.MinValue;
         private ReadState state = ReadState.Idle;
+        private bool regionMissing;
 
         // Tests drive the state machine with a fake clock so that a sixty-second
         // recovery can be checked without waiting a minute. Live code leaves this
@@ -14031,6 +14364,13 @@ namespace CursorImeIndicator
             }
         }
 
+        // Pushed in by the owner after it has resolved the region, because only the
+        // owner can see the settings and the cursor.
+        internal void SetRegionMissing(bool value)
+        {
+            lock (sync) { regionMissing = value; }
+        }
+
         internal void StopOnError(string reason)
         {
             lock (sync)
@@ -14087,6 +14427,7 @@ namespace CursorImeIndicator
 
                 if (!enabled) { state = ReadState.Idle; return false; }
                 if (stoppedOnError) { state = ReadState.StoppedOnError; return false; }
+                if (regionMissing) { state = ReadState.NeedsRegion; return false; }
                 if (resourceBlocked || !healthy) { state = ReadState.ResourceLow; return false; }
                 if (requestInFlight)
                 {
@@ -14122,6 +14463,14 @@ namespace CursorImeIndicator
             {
                 DateTime now = NowUtc();
                 ResourceSnapshot current = latest;
+                // Unlike an error stop, this one a manual read cannot clear: the region
+                // is stale because the display changed, and asking again reads the same
+                // wrong place. Only setting a region fixes it.
+                if (regionMissing)
+                {
+                    reason = "read region not set for this display";
+                    return false;
+                }
                 if (IsSnapshotStale(current, now))
                 {
                     reason = "no fresh measurement";
