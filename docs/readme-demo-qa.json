@@ -1,0 +1,13 @@
+{
+  "frames": 260,
+  "durationSeconds": 26.0,
+  "width": 960,
+  "height": 540,
+  "gifBytes": 643914,
+  "allFramesDecoded": true,
+  "blankFrames": 0,
+  "relativeLinksExist": true,
+  "privacy": "Only reviewed public inputs. No desktop screenshots, private settings, clipboard content or raw logs. All-frame contact sheet and complete public settings image reviewed. Both WAV files have no metadata tags.",
+  "presentation": "Illustrated flow, real sanitized settings panel and synthesized-audio waveform. Not a live screen recording.",
+  "scope": "Simple public addition test passed. Separate mixed-arithmetic test failed; accuracy limitation disclosed in README."
+}

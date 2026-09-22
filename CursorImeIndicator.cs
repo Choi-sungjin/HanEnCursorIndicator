@@ -321,6 +321,7 @@ namespace CursorImeIndicator
         public const string VoiceGroupCloud = "\uD074\uB77C\uC6B0\uB4DC (\uC120\uD0DD)";
         public const string VoiceEngine = "TTS \uC5D4\uC9C4";
         public const string VoiceEngineSupertonic = "Supertonic \uB85C\uCEEC (\uBB34\uB8CC)";
+        public const string VoiceEngineCosyVoice = "CosyVoice (\uC790\uBE44\uC2A4 \uBCF5\uC81C)";
         public const string VoiceEngineSupertoneApi = "Supertone API (\uD074\uB77C\uC6B0\uB4DC)";
         public const string VoiceLocalVoice = "\uB85C\uCEEC \uBCF4\uC774\uC2A4";
         public const string VoiceJarvisProfile = "\uC790\uBE44\uC2A4 \uC74C\uC131";
@@ -425,6 +426,7 @@ namespace CursorImeIndicator
         private ToolStripMenuItem voiceEnabledItem;
         private ToolStripMenuItem voiceEngineSupertonicItem;
         private ToolStripMenuItem voiceEngineSupertoneApiItem;
+        private ToolStripMenuItem voiceEngineCosyVoiceItem;
         private const int VoiceToggleHotkeyId = 0xB001;
         private const int VoiceStopHotkeyId = 0xB002;
         private const int ImageToggleHotkeyId = 0xB003;
@@ -1092,6 +1094,9 @@ namespace CursorImeIndicator
             voiceEngineSupertoneApiItem = new ToolStripMenuItem(TextResources.VoiceEngineSupertoneApi, null, OnVoiceEngineSupertoneApi);
             engineMenu.DropDownItems.Add(voiceEngineSupertonicItem);
             engineMenu.DropDownItems.Add(voiceEngineSupertoneApiItem);
+            voiceEngineCosyVoiceItem = new ToolStripMenuItem(TextResources.VoiceEngineCosyVoice, null,
+                delegate { voiceSettings.Engine = VoiceSettings.EngineCosyVoice; voiceSettings.Save(); UpdateVoiceEngineChecks(); });
+            engineMenu.DropDownItems.Add(voiceEngineCosyVoiceItem);
             UpdateVoiceEngineChecks();
 
             menu.DropDownItems.Add(voiceEnabledItem);
@@ -1474,7 +1479,9 @@ namespace CursorImeIndicator
             if (voiceEngineSupertonicItem != null)
                 voiceEngineSupertonicItem.Checked = local;
             if (voiceEngineSupertoneApiItem != null)
-                voiceEngineSupertoneApiItem.Checked = !local;
+                voiceEngineSupertoneApiItem.Checked = voiceSettings.Engine == VoiceSettings.EngineSupertoneApi;
+            if (voiceEngineCosyVoiceItem != null)
+                voiceEngineCosyVoiceItem.Checked = voiceSettings.Engine == VoiceSettings.EngineCosyVoice;
         }
 
         private void OnVoiceEngineSupertonic(object sender, EventArgs e)
@@ -2083,8 +2090,9 @@ namespace CursorImeIndicator
         {
             if (bubble && !settings.BubbleVoiceEnabled) return;
             bool useLocalEngine = voiceSettings.UsesSupertonicEngine();
+            bool useCloneEngine = voiceSettings.Engine == VoiceSettings.EngineCosyVoice;
             string apiKey = "";
-            if (!useLocalEngine)
+            if (!useLocalEngine && !useCloneEngine)
             {
                 apiKey = VoiceSettings.LoadApiKey();
                 if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(voiceSettings.VoiceId.Trim()))
@@ -2134,7 +2142,9 @@ namespace CursorImeIndicator
                 {
                     if (!isCancelled())
                     {
-                        string audioPath = useLocalEngine
+                        string audioPath = useCloneEngine
+                            ? CosyVoiceLocalClient.CreateSpeechFile(request)
+                            : useLocalEngine
                             ? SupertonicLocalClient.CreateSpeechFile(request)
                             : SupertoneTtsClient.CreateSpeechFile(request);
                         VoiceAudioPlayer.PlayWavAndDelete(audioPath, owner, isCancelled);
@@ -5214,7 +5224,7 @@ namespace CursorImeIndicator
             }
         }
 
-        private static string QuoteJson(string value)
+        internal static string QuoteJson(string value)
         {
             StringBuilder result = new StringBuilder("\"");
             foreach (char c in value ?? "")
@@ -8479,6 +8489,7 @@ namespace CursorImeIndicator
             engineCombo.Dock = DockStyle.Fill;
             engineCombo.Items.Add(TextResources.VoiceEngineSupertonic);
             engineCombo.Items.Add(TextResources.VoiceEngineSupertoneApi);
+            engineCombo.Items.Add(TextResources.VoiceEngineCosyVoice);
 
             jarvisCheck = new CheckBox();
             jarvisCheck.Text = TextResources.VoiceJarvisProfile;
@@ -8650,6 +8661,12 @@ namespace CursorImeIndicator
             Controls.Add(table);
             Controls.Add(accentStrip);
 
+            engineCombo.SelectedIndexChanged += delegate
+            {
+                bool cloned = engineCombo.SelectedIndex == 2;
+                jarvisCheck.Enabled = maleCheck.Enabled = femaleCheck.Enabled = toneTrack.Enabled = stepsTrack.Enabled = !cloned;
+                jarvisHint.Text = cloned ? "CosyVoice: \uC800\uC7A5\uB41C \uC601\uC5B4\uD310 \uC790\uBE44\uC2A4 \uCC38\uC870 \uC74C\uC131\uC744 \uC0AC\uC6A9\uD569\uB2C8\uB2E4." : TextResources.VoiceJarvisProfileHint;
+            };
             Reload();
         }
 
@@ -8723,7 +8740,7 @@ namespace CursorImeIndicator
         public void Reload()
         {
             enabledCheck.Checked = settings.Enabled;
-            engineCombo.SelectedIndex = settings.UsesSupertonicEngine() ? 0 : 1;
+            engineCombo.SelectedIndex = settings.Engine == VoiceSettings.EngineCosyVoice ? 2 : settings.UsesSupertonicEngine() ? 0 : 1;
 
             heldLocalVoice = VoiceSettings.NormalizeLocalVoice(settings.LocalVoice);
             heldJarvisVoice = VoiceSettings.NormalizeLocalVoice(settings.JarvisBaseVoice);
@@ -8962,7 +8979,7 @@ namespace CursorImeIndicator
             try
             {
                 settings.Enabled = enabledCheck.Checked;
-                settings.Engine = engineCombo.SelectedIndex == 1 ? VoiceSettings.EngineSupertoneApi : VoiceSettings.EngineSupertonic;
+                settings.Engine = engineCombo.SelectedIndex == 2 ? VoiceSettings.EngineCosyVoice : engineCombo.SelectedIndex == 1 ? VoiceSettings.EngineSupertoneApi : VoiceSettings.EngineSupertonic;
                 string picked = ReadPickedVoice();
                 settings.JarvisVoice = jarvisCheck.Checked;
                 if (jarvisCheck.Checked)
@@ -10553,6 +10570,7 @@ namespace CursorImeIndicator
         public const int MaxSpeedPercent = 200;
         public const int MaxAllowedTextLength = 300;
 
+        public const string EngineCosyVoice = "cosyvoice";
         public const string EngineSupertonic = "supertonic";
         public const string EngineSupertoneApi = "supertone_api";
 
@@ -10571,6 +10589,8 @@ namespace CursorImeIndicator
         // picked for themselves, untouched.
         public string JarvisBaseVoice = VoiceJarvisTone.BaseVoice;
         public int LocalSteps = 8;
+        public string CosyVoiceStudioPath = "";
+        public string CosyVoiceSpeaker = "";
         public string LocalPython = "";
         public int HotkeyModifiers = 0;
         public int HotkeyKey = 0;
@@ -10585,7 +10605,7 @@ namespace CursorImeIndicator
 
         public bool UsesSupertonicEngine()
         {
-            return Engine != EngineSupertoneApi;
+            return Engine == EngineSupertonic;
         }
 
         public static VoiceSettings Load()
@@ -10616,6 +10636,10 @@ namespace CursorImeIndicator
                     {
                         settings.Engine = NormalizeEngine(value);
                     }
+                    else if (key.Equals("cosyVoiceStudioPath", StringComparison.OrdinalIgnoreCase))
+                        settings.CosyVoiceStudioPath = value;
+                    else if (key.Equals("cosyVoiceSpeaker", StringComparison.OrdinalIgnoreCase))
+                        settings.CosyVoiceSpeaker = value;
                     else if (key.Equals("jarvisVoice", StringComparison.OrdinalIgnoreCase))
                     {
                         bool jarvis;
@@ -10715,6 +10739,8 @@ namespace CursorImeIndicator
                 List<string> lines = new List<string>();
                 lines.Add("enabled=" + Enabled);
                 lines.Add("engine=" + NormalizeEngine(Engine));
+                lines.Add("cosyVoiceStudioPath=" + CosyVoiceStudioPath);
+                lines.Add("cosyVoiceSpeaker=" + CosyVoiceSpeaker);
                 lines.Add("localVoice=" + NormalizeLocalVoice(LocalVoice));
                 lines.Add("jarvisVoice=" + JarvisVoice);
                 lines.Add("jarvisBaseVoice=" + NormalizeLocalVoice(JarvisBaseVoice));
@@ -10751,6 +10777,8 @@ namespace CursorImeIndicator
             request.Model = Model.Trim();
             request.Style = Style.Trim();
             request.SpeedPercent = ClampSpeedPercent(SpeedPercent);
+            request.CosyVoiceStudioPath = CosyVoiceStudioPath;
+            request.CosyVoiceSpeaker = CosyVoiceSpeaker;
             request.JarvisVoice = JarvisVoice;
             request.JarvisBaseVoice = NormalizeLocalVoice(JarvisBaseVoice);
             return request;
@@ -10759,7 +10787,7 @@ namespace CursorImeIndicator
         public static string NormalizeEngine(string engine)
         {
             string value = (engine ?? "").Trim().ToLowerInvariant();
-            return value == EngineSupertoneApi ? EngineSupertoneApi : EngineSupertonic;
+            return value == EngineCosyVoice ? EngineCosyVoice : value == EngineSupertoneApi ? EngineSupertoneApi : EngineSupertonic;
         }
 
         public static string NormalizeLocalVoice(string voice)
@@ -10907,6 +10935,8 @@ namespace CursorImeIndicator
         public string Model;
         public string Style;
         public int SpeedPercent;
+        public string CosyVoiceStudioPath;
+        public string CosyVoiceSpeaker;
         public bool JarvisVoice;
         public string JarvisBaseVoice;
     }
@@ -12685,6 +12715,135 @@ namespace CursorImeIndicator
             }
             catch
             {
+            }
+        }
+    }
+
+
+    // Reuses the user's installed local clone engine and saved reference voice.
+    // Clone audio must never pass through the synthetic Jarvis pitch filter.
+    internal static class CosyVoiceLocalClient
+    {
+        private static readonly object Sync = new object();
+        private static Process launcher;
+        private const string Endpoint = "http://127.0.0.1:9881";
+
+        private static string Json(string text) { return CompanionChatForm.QuoteJson(text ?? ""); }
+        private static byte[] Call(string route, string body, int timeout)
+        {
+            HttpWebRequest request = (HttpWebRequest)WebRequest.Create(Endpoint + route);
+            request.Timeout = timeout;
+            request.ReadWriteTimeout = timeout;
+            if (body != null)
+            {
+                request.Method = "POST";
+                request.ContentType = "application/json; charset=utf-8";
+                byte[] data = Encoding.UTF8.GetBytes(body);
+                request.ContentLength = data.Length;
+                using (Stream stream = request.GetRequestStream()) stream.Write(data, 0, data.Length);
+            }
+            using (WebResponse response = request.GetResponse())
+            using (Stream input = response.GetResponseStream())
+            using (MemoryStream output = new MemoryStream())
+            {
+                input.CopyTo(output);
+                return output.ToArray();
+            }
+        }
+        private static bool Ready()
+        {
+            try { return Encoding.UTF8.GetString(Call("/status", null, 2000)).Replace(" ", "").Contains("\"model_loaded\":true"); }
+            catch { return false; }
+        }
+        // The native clone engine emits IEEE float WAV. MCI and the tempo pass
+        // require PCM16; convert sample representation without pitch processing.
+        internal static byte[] Pcm16(byte[] wav)
+        {
+            int format = 0, channels = 0, rate = 0, bits = 0, data = -1, length = 0;
+            for (int p = 12; p <= wav.Length - 8; )
+            {
+                int n = BitConverter.ToInt32(wav, p + 4);
+                if (n < 0 || n > wav.Length - p - 8) throw new InvalidDataException("Truncated WAV chunk.");
+                string tag = Encoding.ASCII.GetString(wav, p, 4);
+                if (tag == "fmt " && n >= 16)
+                {
+                    format = BitConverter.ToInt16(wav, p + 8);
+                    channels = BitConverter.ToInt16(wav, p + 10);
+                    rate = BitConverter.ToInt32(wav, p + 12);
+                    bits = BitConverter.ToInt16(wav, p + 22);
+                }
+                if (tag == "data") { data = p + 8; length = n; }
+                p += 8 + n + n % 2;
+            }
+            if (data < 0 || length == 0 || channels != 1 || rate < 8000)
+                throw new InvalidDataException("Unsupported clone WAV.");
+            if (format == 1 && bits == 16) return wav;
+            if (format != 3 || bits != 32 || length % 4 != 0)
+                throw new InvalidDataException("Unsupported clone sample format.");
+            int count = length / 4;
+            using (MemoryStream output = new MemoryStream())
+            using (BinaryWriter writer = new BinaryWriter(output))
+            {
+                writer.Write(Encoding.ASCII.GetBytes("RIFF")); writer.Write(36 + count * 2);
+                writer.Write(Encoding.ASCII.GetBytes("WAVEfmt ")); writer.Write(16);
+                writer.Write((short)1); writer.Write((short)1); writer.Write(rate);
+                writer.Write(rate * 2); writer.Write((short)2); writer.Write((short)16);
+                writer.Write(Encoding.ASCII.GetBytes("data")); writer.Write(count * 2);
+                for (int i = 0; i < count; i++)
+                {
+                    float sample = BitConverter.ToSingle(wav, data + i * 4);
+                    if (float.IsNaN(sample) || float.IsInfinity(sample)) throw new InvalidDataException("Invalid clone sample.");
+                    writer.Write((short)Math.Round(Math.Max(-1.0, Math.Min(1.0, sample)) * 32767.0));
+                }
+                return output.ToArray();
+            }
+        }
+        public static string CreateSpeechFile(VoiceRequestOptions options)
+        {
+            lock (Sync)
+            {
+                string root = options.CosyVoiceStudioPath ?? "";
+                string speaker = options.CosyVoiceSpeaker ?? "";
+                if (speaker.Length == 0 || speaker.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || speaker == "." || speaker == "..")
+                    throw new InvalidOperationException("Set cosyVoiceSpeaker in voice.ini to an installed reference voice.");
+                string prompt = Path.Combine(root, "data", "voices", speaker, "prompt.gguf");
+                if (!File.Exists(prompt)) throw new InvalidOperationException("CosyVoice reference voice is missing: check cosyVoiceStudioPath in voice.ini.");
+                if (!Ready())
+                {
+                    string python = Path.Combine(root, ".venv", "Scripts", "python.exe");
+                    if (!File.Exists(python)) throw new InvalidOperationException("The local CosyVoice installation is missing.");
+                    if (launcher == null || launcher.HasExited)
+                    {
+                        ProcessStartInfo info = new ProcessStartInfo(python, "-X utf8 manage.py start --no-open");
+                        info.WorkingDirectory = root;
+                        info.UseShellExecute = false;
+                        info.CreateNoWindow = true;
+                        // Keep GPU headroom for the screen-reading model.
+                        info.EnvironmentVariables["VOICE_STUDIO_BACKEND"] = "cpu";
+                        launcher = Process.Start(info);
+                    }
+                    Stopwatch wait = Stopwatch.StartNew();
+                    while (!Ready())
+                    {
+                        if (wait.ElapsedMilliseconds > 180000) throw new TimeoutException("CosyVoice did not become ready.");
+                        Thread.Sleep(500);
+                    }
+                }
+                string names = Encoding.UTF8.GetString(Call("/speaker", null, 5000));
+                if (!names.Contains(Json(speaker)))
+                    Call("/speaker", "{\"type\":\"gguf\",\"name\":" + Json(speaker) + ",\"path\":" + Json(Path.GetFullPath(prompt)) + "}", 30000);
+                Stopwatch timer = Stopwatch.StartNew();
+                byte[] wav = Call("/tts", "{\"text\":" + Json(options.Text) + ",\"voice\":" + Json(speaker) +
+                    ",\"mode\":\"instruct\",\"instruction\":\"You are a helpful assistant. <|endofprompt|>\",\"response_format\":\"wav\",\"speed\":1.0,\"stream\":false,\"seed\":42}", 120000);
+                if (wav.Length < 44 || Encoding.ASCII.GetString(wav, 0, 4) != "RIFF" || Encoding.ASCII.GetString(wav, 8, 4) != "WAVE")
+                    throw new InvalidDataException("CosyVoice returned invalid WAV audio.");
+                string directory = Path.Combine(Path.GetTempPath(), "HanEnCursorIndicator");
+                Directory.CreateDirectory(directory);
+                string path = Path.Combine(directory, "cosyvoice-" + Guid.NewGuid().ToString("N") + ".wav");
+                File.WriteAllBytes(path, Pcm16(wav));
+                VoiceTimeStretch.TryStretchWavInPlace(path, options.SpeedPercent / 100.0d);
+                VoiceDebugLog.Write("cosyvoice clone synthesized; elapsedMs=" + timer.ElapsedMilliseconds + " bytes=" + wav.Length);
+                return path;
             }
         }
     }

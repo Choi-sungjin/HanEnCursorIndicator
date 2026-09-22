@@ -1,9 +1,38 @@
 # HanEn Cursor Indicator
 
-Windows-only tray app that shows the current Korean/English input mode next to the mouse cursor.
-마우스 커서 바로 옆에 현재 입력 상태를 `한` / `en` / `EN`으로 표시하는 Windows 전용 앱입니다.
+A Windows tray companion for Korean/English input indication, local screen reading, and reference-voice speech.
+커서 옆의 `한` / `en` / `EN` 표시부터 **선택 영역 읽기, 답변 말풍선, 로컬 음성 복제**까지 지원하는 Windows 앱입니다.
 
-![HanEn Cursor Indicator demo](assets/demo.gif)
+![HanEn: 입력 상태, 영역 읽기, 자비스 복제 음성, 검증 결과 시연](assets/demo.gif)
+
+> **26초 · 무음 GIF · 공개 예제로 재현한 기능 흐름**입니다. 실제 앱 설정 화면을 공개용 값으로 렌더링했고, 파형은 실제 합성 음성에서 가져왔습니다. 개인 바탕화면 녹화가 아닙니다.
+
+**음성 들어보기:** [한국어 샘플](assets/jarvis-korean.wav) · [영어 샘플](assets/jarvis-english.wav)
+
+영어판 자비스를 목표로 한 참조 샘플 기반 복제입니다. 공식 영화 원본 녹음 여부는 확인되지 않았으며, 원본 배우의 공식 음성 제품을 의미하지 않습니다.
+
+## 최신 기능 / What's new
+
+- **영역 읽기:** 지정한 화면 영역을 로컬 모델에 보내고 결과를 말풍선으로 표시합니다. 답변 상한은 **200자**입니다.
+- **음성 엔진 3종:** Supertonic 기본 음성, 선택적인 Supertone API, **CosyVoice 참조 음성 복제**를 구분해 선택합니다.
+- **자비스 복제:** 일반 남성 음성의 음높이를 낮추는 기존 프로필과 별개입니다. 복제 결과에는 그 음높이 필터를 적용하지 않습니다.
+- **개별 제어:** 영역 지정, 읽기 켜기/끄기, 말풍선 닫기, 답변 음성을 각각 제어합니다. 단축키는 앱에서 설정합니다.
+- **안정성:** 오래된 디스플레이 드라이버 이벤트로 읽기가 잘못 중단되는 경우를 줄였으며, 메모리 부족 시의 보호 동작은 유지합니다.
+
+## 사용 시연 테스트 / Verified demo
+
+| 단계 | 확인한 동작 | 확인 범위 |
+| --- | --- | --- |
+| 공개 예제 읽기 | `2 + 3 = ?`, 보기 A=5 / B=6 / C=7 → 실제 응답 `2 더하기 3 은 5 가 돼서 A 가 정답이야.` | 앱의 요청 생성·응답 추출 코드 + 로컬 `qwen3.5:4b`, 2026-09-23 |
+| 음성 합성 | 저장된 참조 음색으로 한국어·영어 WAV 생성 | 위 샘플에서 청취 가능 |
+| 실제 앱 재생 | 화면 읽기 → 답변 → CosyVoice 합성 → Windows 재생 완료 | 실행 중인 앱에서 확인, [검증 기록](docs/jarvis-clone-local-validation.md) |
+| 형식 호환 | float32 WAV → PCM16 변환 | 샘플 수와 재생 길이 보존 |
+
+테스트 PC의 CPU 복제 합성은 약 **20–34초**였으며, 문장 길이와 장비에 따라 달라집니다. 그래픽 메모리를 화면 읽기 모델에 남겨두도록 앱이 시작하는 복제 엔진은 CPU를 사용합니다.
+
+**모델의 답변은 검토가 필요합니다.** 단순 덧셈 시연은 통과했지만, 별도의 혼합 산술 예제에서는 오답이 나왔습니다. 위 표는 전체 문제 풀이 정확도에 대한 보장이 아닙니다. [공개 예제와 결과](assets/demo-evidence.json)
+
+**시연 개인정보 보호:** 예제 문장, 공개용 설정 화면, 생성 음성만 포함합니다. 계정, 사용자 폴더 경로, 개인 대화, 클립보드 내용, 원본 로그와 설정 파일은 포함하지 않습니다.
 
 
 ## Usage Example / 사용 예시
@@ -13,7 +42,12 @@ Windows-only tray app that shows the current Korean/English input mode next to t
 3. 한글 입력 상태에서는 미니미 얼굴에 `한`이 표시됩니다.
 4. 영어 소문자 입력 상태에서는 `en`, 대문자 입력 상태에서는 `EN`이 표시됩니다.
 5. 입력 상태가 바뀌면 미니미가 1초 동안 마우스를 가리킨 뒤 정자세로 돌아옵니다.
-6. 일정 주기마다 만세 포즈가 표시됩니다.
+6. 미니미 이미지·크기·표시 모드를 취향에 맞게 바꿉니다.
+7. 트레이 메뉴의 말풍선 항목에서 읽을 영역을 지정하고 화면 읽기를 켭니다. 영역 지정 단축키도 별도로 설정할 수 있습니다.
+8. 답변을 소리로 들으려면 `답변 음성`을 켭니다. 드래그한 글 읽기는 별도의 `드래그 텍스트 읽기` 옵션입니다.
+9. `보이스 설정` → `TTS 엔진`에서 원하는 엔진을 선택합니다. 복제 목소리는 아래 CosyVoice 연결 설정이 먼저 필요합니다.
+
+입력 표시만 사용하면 추가 AI 엔진은 필요 없습니다. 화면 읽기와 음성 기능은 각각 로컬 모델·엔진 또는 선택한 API 설정이 필요합니다. 상시 화면 읽기는 앱을 재시작하면 다시 켜야 합니다.
 
 ## Download
 
@@ -180,7 +214,7 @@ Right-click the tray icon and open `미니미 색상`.
 - `글씨 색상`: choose separate face-label colors for `한`, `en`, and `EN`.
 - The face label stays readable while the body/clothing area is recolored.
 
-## Voice / TTS (Supertonic local by default, Supertone API optional)
+## Voice / TTS (Supertonic · CosyVoice · optional Supertone API)
 
 Right-click the tray icon and open `보이스`.
 
@@ -229,6 +263,25 @@ Notes:
 - Trying to speak before setup has run offers the installer instead of just naming a pip command.
 - Pick the local voice in `보이스 설정`: `성별` checkboxes (남성/여성) plus the `톤/목소리` slider (1–5) select among the 10 built-in styles (`F1`–`F5`, `M1`–`M5`).
 - `속도` slider (50–200%) controls speech speed (Supertonic clamps to 70–200%); `품질(스텝)` slider (1–32, default 8) trades synthesis quality against speed. Supertonic-3 has no separate pitch parameter — tone variation comes from the voice styles.
+
+### CosyVoice reference voice / 자비스 복제
+
+이미 설치한 Windows 로컬 CosyVoice Studio와 저장된 `prompt.gguf` 참조 음성을 연결합니다. 모델이나 참조 음성은 이 저장소에 포함되지 않으며, 현재 앱의 Supertonic 설치 버튼이 CosyVoice까지 설치하지는 않습니다.
+
+1. CosyVoice Studio에서 사용할 참조 음성을 준비합니다.
+2. 앱을 종료하고 `%APPDATA%\HanEnCursorIndicator\voice.ini`의 아래 항목을 자신의 설치 위치와 음성 ID로 설정합니다. 기존의 다른 항목은 유지합니다.
+3. 앱을 다시 열고 `보이스 설정` → `CosyVoice (자비스 복제)`를 선택합니다. `답변 음성` 또는 `드래그 텍스트 읽기`를 켜서 사용합니다.
+
+```ini
+engine=cosyvoice
+cosyVoiceStudioPath=D:\VoiceClone\voice-clone-studio
+cosyVoiceSpeaker=your_reference_voice_id
+speedPercent=100
+```
+
+위 경로와 음성 ID는 설명용 예시입니다. 참조 파일은 설치 폴더의 `data/voices/<음성 ID>/prompt.gguf`에 있어야 합니다. 복제는 입력 문장을 번역하지 않습니다. 한국어 문장은 한국어로, 영어 문장은 영어로 합성합니다.
+
+앱은 필요할 때 로컬 엔진을 시작하고 참조 음성을 등록합니다. 누락·합성 오류가 발생해도 다른 목소리로 몰래 대체하지 않습니다. Supertonic의 성별·톤·품질 선택은 복제 음색에 적용되지 않으며, 복제 모드에서 비활성화됩니다.
 
 ### Supertone API engine (optional)
 
@@ -279,6 +332,8 @@ Right-click the tray icon and open `라이선스`.
 - Tray menu state + pose label-position drag editor.
 - Tray menu mascot color picker.
 - Tray menu label color picker and background-line cutout refinement.
+- Selected-region local screen reading, answer bubbles up to 200 characters, and separate reading/voice hotkeys.
+- CosyVoice reference-voice cloning with native Windows WAV playback.
 - Tray menu Supertone voice settings with encrypted per-PC API key storage.
 - Tray menu one-click Supertonic local voice setup: private Python runtime, `supertonic[serve]`, and the model, with no terminal.
 
@@ -304,11 +359,14 @@ The build output is `CursorImeIndicator.exe`. Commercial distributables are pack
 
 ## Demo GIF
 
-The README animation uses the current minimi mascot pose images from `dist/images/` and is generated without external packages:
+The README GIF is a privacy-safe illustrated flow with a separately rendered **real settings panel** and an actual generated-audio waveform. It is not a desktop screen recording and does not imply instantaneous synthesis. Reviewed public inputs are under `assets/`; no personal desktop or settings are loaded by the GIF generator.
 
 ```bat
-node tools/create-demo-gif.js
+python -m pip install Pillow
+python tools/create-readme-demo.py
 ```
+
+The Node entry point `node tools/create-demo-gif.js` invokes the same Python generator; set `HANEN_DEMO_PYTHON` if Python is not on PATH. The output is 960×540, 26 seconds, looping, with no sound. [All-frame review sheet](assets/demo-review-contact-sheet.jpg)
 
 ## Notes
 
