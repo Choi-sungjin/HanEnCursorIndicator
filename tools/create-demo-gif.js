@@ -4,7 +4,7 @@ const zlib = require("zlib");
 
 const width = 640;
 const height = 360;
-const frameCount = 36;
+const frameCount = 56;
 const delayCs = 8;
 
 const root = path.resolve(__dirname, "..");
@@ -23,6 +23,7 @@ const glyphs = {
   ":": ["00000", "01100", "01100", "00000", "01100", "01100", "00000"],
   "-": ["00000", "00000", "00000", "11111", "00000", "00000", "00000"],
   "+": ["00000", "00100", "00100", "11111", "00100", "00100", "00000"],
+  "=": ["00000", "00000", "11111", "00000", "11111", "00000", "00000"],
   "0": ["01110", "10001", "10011", "10101", "11001", "10001", "01110"],
   "1": ["00100", "01100", "00100", "00100", "00100", "00100", "01110"],
   "2": ["01110", "10001", "00001", "00010", "00100", "01000", "11111"],
@@ -384,6 +385,90 @@ function drawSizePanel(canvas, percent) {
   drawText(canvas, "DRAG SLIDER", 407, 245, [100, 116, 139], 1);
 }
 
+// The read region the user drags out, with the scan line sweeping it. `progress`
+// runs 0..1 over the scene so the sweep reads as the app working, not as a static
+// box drawn on top of the screenshot.
+function drawReadRegion(canvas, progress) {
+  const x = 96;
+  const y = 96;
+  const w = 232;
+  const h = 128;
+
+  fillRoundRect(canvas, x, y, w, h, 6, [239, 246, 255]);
+  // Dashed border, drawn by hand: the helpers only stroke solid rectangles.
+  for (let i = 0; i < w; i += 10) {
+    fillRect(canvas, x + i, y, 6, 2, [37, 99, 235]);
+    fillRect(canvas, x + i, y + h - 2, 6, 2, [37, 99, 235]);
+  }
+  for (let i = 0; i < h; i += 10) {
+    fillRect(canvas, x, y + i, 2, 6, [37, 99, 235]);
+    fillRect(canvas, x + w - 2, y + i, 2, 6, [37, 99, 235]);
+  }
+
+  fillRoundRect(canvas, x, y - 18, 108, 18, 4, [37, 99, 235]);
+  drawText(canvas, "READ REGION", x + 8, y - 13, [255, 255, 255], 1);
+
+  // Stand-in for whatever the user is looking at.
+  drawText(canvas, "4 X 3 - 1 X 2 = ", x + 16, y + 26, [71, 85, 105], 2);
+  drawText(canvas, "A. 10", x + 16, y + 56, [100, 116, 139], 1);
+  drawText(canvas, "B. 6", x + 16, y + 74, [100, 116, 139], 1);
+  drawText(canvas, "C. 12", x + 16, y + 92, [100, 116, 139], 1);
+
+  const scanY = y + 6 + Math.round((h - 12) * progress);
+  fillRect(canvas, x + 4, scanY, w - 8, 2, [37, 99, 235]);
+}
+
+// The answer bubble, in the colours the app actually ships with.
+function drawAnswerBubble(canvas, x, y, lines) {
+  const w = 196;
+  const h = 62;
+  fillRoundRect(canvas, x, y, w, h, 8, [255, 255, 128]);
+  strokeRect(canvas, x, y, w, h, [93, 125, 86]);
+  fillPolygon(canvas, [[x + 18, y + h], [x + 38, y + h], [x + 20, y + h + 14]], [255, 255, 128]);
+  for (let i = 0; i < lines.length; i++) {
+    drawText(canvas, lines[i], x + 12, y + 14 + i * 20, [34, 60, 43], 1);
+  }
+}
+
+// Two traces: the plain rendering and the same utterance after the profile. The
+// lower, slower one is the whole point, so it is drawn thicker.
+function drawVoicePanel(canvas, phase, voice) {
+  const x = 356;
+  const y = 160;
+  const w = 212;
+  const h = 104;
+  fillRoundRect(canvas, x, y, w, h, 8, [255, 255, 255]);
+  strokeRect(canvas, x, y, w, h, [203, 213, 225]);
+  drawText(canvas, "JARVIS VOICE", x + 14, y + 14, [30, 41, 59], 1);
+  fillRoundRect(canvas, x + 158, y + 9, 40, 16, 8, [24, 128, 91]);
+  drawText(canvas, "ON", x + 172, y + 14, [255, 255, 255], 1);
+
+  drawText(canvas, "VOICE", x + 14, y + 38, [100, 116, 139], 1);
+  fillRoundRect(canvas, x + 70, y + 32, 52, 18, 4, [236, 242, 249]);
+  strokeRect(canvas, x + 70, y + 32, 52, 18, [203, 213, 225]);
+  drawText(canvas, voice, x + 88, y + 38, [30, 64, 175], 1);
+  drawText(canvas, "F1-F5 M1-M5", x + 130, y + 38, [148, 163, 184], 1);
+
+  const midY = y + 70;
+  const left = x + 14;
+  const span = w - 28;
+  for (let i = 0; i < span; i++) {
+    const t = i / span;
+    const envelope = Math.sin(Math.PI * t);
+    const plain = Math.sin((t * 26 + phase) * Math.PI) * 11 * envelope;
+    fillRect(canvas, left + i, midY + Math.round(plain), 1, 1, [148, 163, 184]);
+  }
+  for (let i = 0; i < span; i++) {
+    const t = i / span;
+    const envelope = Math.sin(Math.PI * t);
+    // 0.86 of the pitch, so the drawn wave is genuinely the measured ratio.
+    const shaped = Math.sin((t * 26 * 0.86 + phase) * Math.PI) * 14 * envelope;
+    fillRect(canvas, left + i, midY + Math.round(shaped), 1, 2, [30, 64, 175]);
+  }
+  drawText(canvas, "0.86 PITCH", x + 14, y + 88, [100, 116, 139], 1);
+  drawText(canvas, "SAME LENGTH", x + 116, y + 88, [100, 116, 139], 1);
+}
+
 function drawPackPanel(canvas) {
   fillRoundRect(canvas, 372, 154, 194, 120, 8, [255, 255, 255]);
   strokeRect(canvas, 372, 154, 194, 120, [203, 213, 225]);
@@ -412,6 +497,9 @@ function makeFrame(frameIndex) {
   let showPack = false;
   let showLabel = true;
   let percent = 100;
+  let readProgress = -1;
+  let bubbleLines = null;
+  let voicePhase = -1;
 
   if (frameIndex < 9) {
     const t = ease(frameIndex / 8);
@@ -438,7 +526,7 @@ function makeFrame(frameIndex) {
     mascotY = 108;
     cursorX = mascotX - 26;
     showPack = true;
-  } else {
+  } else if (frameIndex < 36) {
     const t = ease((frameIndex - 30) / 5);
     pose = "idle";
     label = frameIndex % 2 === 0 ? "EN" : "en";
@@ -451,11 +539,45 @@ function makeFrame(frameIndex) {
     caption = "LABEL TOGGLE CAN SHOW IMAGE ONLY";
     showSize = true;
     showLabel = false;
+  } else if (frameIndex < 42) {
+    // Sweeping the region: the app is looking, nothing has been answered yet.
+    pose = "idle";
+    label = "han";
+    caption = "READS THE CHOSEN REGION ON A TIMER";
+    readProgress = (frameIndex - 36) / 5;
+    mascotX = 380;
+    mascotY = 120;
+    cursorX = mascotX - 26;
+    cursorY = mascotY + 40;
+  } else if (frameIndex < 48) {
+    pose = "cheer";
+    label = "han";
+    caption = "REASON FIRST THEN THE ANSWER";
+    readProgress = 1;
+    bubbleLines = ["4 X 3 - 1 X 2 = 10", "SO THE ANSWER IS A"];
+    mascotX = 430;
+    mascotY = 136;
+    mascotSize = 96;
+    cursorX = mascotX - 24;
+    cursorY = mascotY + 36;
+  } else {
+    pose = "idle";
+    label = "han";
+    caption = "JARVIS VOICE - PICK ANY OF TEN";
+    voicePhase = ((frameIndex - 48) / 8) * 2;
+    mascotX = 196;
+    mascotY = 150;
+    mascotSize = 104;
+    cursorX = mascotX - 24;
+    cursorY = mascotY + 46;
   }
 
   drawBase(canvas, caption);
+  if (readProgress >= 0) drawReadRegion(canvas, readProgress);
   drawMascot(canvas, pose, label, mascotX, mascotY, mascotSize, showLabel);
   drawCursor(canvas, cursorX, cursorY);
+  if (bubbleLines) drawAnswerBubble(canvas, 368, 80, bubbleLines);
+  if (voicePhase >= 0) drawVoicePanel(canvas, voicePhase, "M3");
   if (showPack) drawPackPanel(canvas);
   if (showSize) drawSizePanel(canvas, percent);
   return quantize(canvas);
